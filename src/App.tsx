@@ -78,8 +78,8 @@ export default function App() {
   const [coverPercent, setCoverPercent] = useState<number>(0);
   const [showEpicCelebration, setShowEpicCelebration] = useState(false);
 
-  // 🕒 タイマー管理
-  const [timeLeft, setTimeLeft] = useState(180); // 3分 (180秒)
+  // 🕒 タイマー
+  const [timeLeft, setTimeLeft] = useState(180);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -100,38 +100,37 @@ export default function App() {
 
   useEffect(() => { strokeIdxRef.current = strokeIdx; }, [strokeIdx]);
 
-  // 🕒 ぬりえタイマーのロジック
+  // 🕒 タイマーループ
   useEffect(() => {
     if (screenMode === 'COLOR' && timeLeft > 0) {
-      timerRef.current = setInterval(() => {
-        setTimeLeft(prev => prev - 1);
-      }, 1000);
-    } else if (timeLeft === 0) {
-      handleExitColoring(); // 時間切れ
+      timerRef.current = setInterval(() => { setTimeLeft(prev => prev - 1); }, 1000);
+    } else if (timeLeft === 0 && screenMode === 'COLOR') {
+      handleExitColoring();
     }
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [screenMode, timeLeft]);
 
-  // ぬりえを終了し、スタンプをリセットする
   const handleExitColoring = () => {
     if (timerRef.current) clearInterval(timerRef.current);
-    // その行の進捗をリセットしてロックする
     const currentGroupCharIds = groupChars.map(c => c.id);
     setClearedChars(prev => prev.filter(id => !currentGroupCharIds.includes(id)));
     setTimeLeft(180);
     setScreenMode('RESULT');
   };
 
-  // 文字クリア演出
-  const handleClearChar = () => {
+  // 💮 なぞり書きが完了した時の処理（自動ではなまる演出を起動）
+  const triggerCelebrationAndSave = () => {
     setShowEpicCelebration(true);
     setTimeout(() => {
       setShowEpicCelebration(false);
-      if (!clearedChars.includes(selectedChar.id)) {
-        setClearedChars(prev => [...prev, selectedChar.id]);
-      }
+      setClearedChars(prev => {
+        if (!prev.includes(selectedChar.id)) {
+          return [...prev, selectedChar.id];
+        }
+        return prev;
+      });
       setScreenMode('SELECT');
-    }, 2500); // 2.5秒間はなまるを見せる
+    }, 2800); // 2.5秒〜3秒間じっくりはなまるを体験
   };
 
   const initCanvases = useCallback((force = false) => {
@@ -162,7 +161,7 @@ export default function App() {
     mainCtx.font = fontStr; mainCtx.fillStyle = "#e2e8f0"; mainCtx.textAlign = "center"; mainCtx.textBaseline = "middle";
     mainCtx.fillText(selectedChar.name, CANVAS_SIZE/2, CANVAS_SIZE/2 + 15);
 
-    hitCtx.font = fontStr; hitCtx.strokeStyle = '#FF0000'; hitCtx.fillStyle = '#FF0000'; hitCtx.lineWidth = 35;
+    hitCtx.font = fontStr; hitCtx.strokeStyle = '#FF0000'; hitCtx.fillStyle = '#FF0000'; hitCtx.lineWidth = 45; // 🛠 判定を太く補強
     hitCtx.textAlign = "center"; hitCtx.textBaseline = "middle";
     hitCtx.strokeText(selectedChar.name, CANVAS_SIZE/2, CANVAS_SIZE/2 + 15);
     hitCtx.fillText(selectedChar.name, CANVAS_SIZE/2, CANVAS_SIZE/2 + 15);
@@ -172,19 +171,45 @@ export default function App() {
 
   useEffect(() => { if (screenMode === 'TRAIN') setTimeout(() => initCanvases(true), 50); }, [screenMode, initCanvases]);
 
+  // 🛠 【大修正】なぞり書き判定ロジックを完全に修復
   const calculateCoverage = () => {
     const hitCtx = hitCanvasRef.current?.getContext('2d', { willReadFrequently: true });
     const userCtx = userCanvasRef.current?.getContext('2d', { willReadFrequently: true });
     if (!hitCtx || !userCtx) return;
+
     const w = hitCanvasRef.current!.width; const h = hitCanvasRef.current!.height;
     const hitData = hitCtx.getImageData(0, 0, w, h).data;
     const userData = userCtx.getImageData(0, 0, w, h).data;
-    let target = 0, covered = 0;
-    for (let i = 0; i < hitData.length; i += 16) { if (hitData[i + 3] > 0) { target++; if (userData[i + 3] > 0) covered++; } }
-    if (target > 0) {
-      let display = (covered / target) * 150;
-      const limit = Math.min(100, ((strokeIdxRef.current + 1) / selectedChar.nodes.length) * 100);
-      setCoverPercent(Math.min(100, Math.floor(Math.min(display, limit))));
+    
+    let targetCount = 0, coveredCount = 0;
+    // 粗さを最適化して高速かつ正確にカウント
+    for (let i = 0; i < hitData.length; i += 8) { 
+      if (hitData[i + 3] > 0) { 
+        targetCount++; 
+        if (userData[i + 3] > 0) coveredCount++; 
+      } 
+    }
+
+    if (targetCount > 0) {
+      let rawPercent = (coveredCount / targetCount) * 100;
+      let displayPercent = rawPercent * 2.2; // 幼児向けに少し甘めに進捗をのばす
+      
+      const current = strokeIdxRef.current;
+      const total = selectedChar.nodes.length;
+      const currentLimit = Math.min(100, ((current + 1) / total) * 100);
+      
+      let finalPercent = Math.min(currentLimit, Math.floor(displayPercent));
+      
+      // 最後の画数で一定以上塗れていたら、100%にして即はなまるを起動
+      if (current === total - 1 && finalPercent >= 85) {
+        finalPercent = 100;
+      }
+
+      setCoverPercent(finalPercent);
+
+      if (finalPercent >= 100 && current === total - 1 && !isDrawingRef.current) {
+        triggerCelebrationAndSave();
+      }
     }
   };
 
@@ -199,9 +224,16 @@ export default function App() {
     const pt = getCoordinates(e, canvasRef);
     const mainCtx = canvasRef.current!.getContext('2d')!;
     const userCtx = userCanvasRef.current!.getContext('2d')!;
-    mainCtx.beginPath(); mainCtx.arc(pt.x, pt.y, 12, 0, Math.PI * 2);
+    
+    mainCtx.beginPath(); mainCtx.arc(pt.x, pt.y, 14, 0, Math.PI * 2);
     mainCtx.fillStyle = STROKE_COLORS[strokeIdx % 4]; mainCtx.fill();
-    userCtx.beginPath(); userCtx.arc(pt.x, pt.y, 24, 0, Math.PI * 2); userCtx.fillStyle = '#00FF00'; userCtx.fill();
+    
+    userCtx.beginPath(); userCtx.arc(pt.x, pt.y, 28, 0, Math.PI * 2); 
+    userCtx.fillStyle = '#00FF00'; userCtx.fill();
+    
+    // パスを繋ぐために開始点へ移動
+    mainCtx.beginPath(); mainCtx.moveTo(pt.x, pt.y);
+    userCtx.beginPath(); userCtx.moveTo(pt.x, pt.y);
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -209,17 +241,30 @@ export default function App() {
     const pt = getCoordinates(e, canvasRef);
     const mainCtx = canvasRef.current!.getContext('2d')!;
     const userCtx = userCanvasRef.current!.getContext('2d')!;
-    mainCtx.lineWidth = 24; mainCtx.strokeStyle = STROKE_COLORS[strokeIdx % 4];
+    
+    mainCtx.lineWidth = 28; mainCtx.strokeStyle = STROKE_COLORS[strokeIdx % 4];
     mainCtx.lineTo(pt.x, pt.y); mainCtx.stroke();
-    userCtx.lineWidth = 48; userCtx.strokeStyle = '#00FF00';
+    
+    userCtx.lineWidth = 56; userCtx.strokeStyle = '#00FF00';
     userCtx.lineTo(pt.x, pt.y); userCtx.stroke();
+    
     calculateCoverage();
   };
 
   const handlePointerUp = () => {
+    if (!isDrawingRef.current) return;
     isDrawingRef.current = false;
-    if (coverPercent >= Math.min(100, ((strokeIdx + 1) / selectedChar.nodes.length) * 100)) {
-      if (strokeIdx < selectedChar.nodes.length - 1) setStrokeIdx(prev => prev + 1);
+    
+    const total = selectedChar.nodes.length;
+    // その画数の目標値に達していたら次の画へ進む
+    if (coverPercent >= Math.min(100, ((strokeIdx + 1) / total) * 100)) {
+      if (strokeIdx < total - 1) {
+        setStrokeIdx(prev => prev + 1);
+      } else {
+        // 最終画が完了
+        setCoverPercent(100);
+        triggerCelebrationAndSave();
+      }
     }
   };
 
@@ -228,7 +273,6 @@ export default function App() {
     return mapping[group] || trainA;
   };
 
-  // ぬりえ初期化
   const initColoringCanvas = useCallback(() => {
     const canvas = colorCanvasRef.current; if (!canvas) return;
     const ctx = canvas.getContext('2d'); if (!ctx) return;
@@ -267,17 +311,17 @@ export default function App() {
 
   return (
     <div className="app-container">
-      {/* 🌸 はなまる演出オーバーレイ */}
+      {/* 🌸 修正版：大迫力はなまるコンフェッティ演出 */}
       {showEpicCelebration && (
         <div className="celebration-overlay">
-          <div className="hanamaru">💮</div>
+          <div className="hanamaru" style={{ transform: 'scale(1)', opacity: 1 }}>💮</div>
           <div className="perfect-text">すごすぎる！！</div>
-          {/* 紙吹雪 */}
-          {[...Array(30)].map((_, i) => (
+          {[...Array(40)].map((_, i) => (
             <div key={i} className="confetti" style={{ 
               left: `${Math.random() * 100}vw`, 
               backgroundColor: STROKE_COLORS[i % 4],
-              animationDelay: `${Math.random() * 2}s`
+              animationDelay: `${Math.random() * 1.5}s`,
+              transform: `scale(${Math.random() * 1.5 + 0.5})`
             }} />
           ))}
         </div>
@@ -318,7 +362,7 @@ export default function App() {
           </div>
           <div className="reward-zone" style={{marginTop: '30px'}}>
             {isGroupCleared ? (
-              <button className="reward-active-btn" onClick={() => { setScreenMode('COLOR'); initColoringCanvas(); }}>🎉 しゅっぱつ進行！ぬりえへ（3分）</button>
+              <button className="reward-active-btn" onClick={() => { setScreenMode('COLOR'); setTimeout(() => initColoringCanvas(), 50); }}>🎉 しゅっぱつ進行！ぬりえへ（3分）</button>
             ) : (
               <div className="reward-locked">🔒 あと {groupChars.length - groupChars.filter(c => clearedChars.includes(c.id)).length} つでぬりえだよ！</div>
             )}
@@ -331,23 +375,31 @@ export default function App() {
         <div className="train-screen" style={{ textAlign: 'center' }}>
           <h1 className="main-instruction">「{selectedChar.name}」をなぞろう！</h1>
           <div className="train-workspace">
+            {/* 🛠 ボタン立体デザイン用のクラス名を再適用 */}
             <div className="stroke-control-panel">
               <div className="progress-container">
+                <div className="progress-label">
+                  <span>{strokeIdx + 1}画目 / ぜんぶで {selectedChar.nodes.length}画</span>
+                  <span>{coverPercent}%</span>
+                </div>
                 <div className="progress-track"><div className="progress-fill" style={{ width: `${coverPercent}%` }}></div></div>
               </div>
               {Array.from({ length: selectedChar.nodes.length }).map((_, i) => (
                 <button key={i} className={`stroke-select-btn ${strokeIdx === i ? 'active' : ''}`} style={{ backgroundColor: strokeIdx === i ? STROKE_COLORS[i % 4] : 'white' }} disabled={i > strokeIdx}>
-                  {i+1}画目
+                  🚃 {i+1}画目
                 </button>
               ))}
             </div>
-            <div className="canvas-wrapper">
+            <div className="canvas-wrapper" style={{ width: '500px', height: '500px' }}>
               <canvas ref={canvasRef} className="main-canvas" style={{ width: '100%', height: '100%' }} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} />
+              <canvas ref={hitCanvasRef} style={{ display: 'none' }} />
+              <canvas ref={userCanvasRef} style={{ display: 'none' }} />
             </div>
           </div>
-          {coverPercent >= 100 && (
-            <button className="clear-trigger-btn" onClick={handleClearChar}>できたー！！💮</button>
-          )}
+          <div style={{ display: 'flex', gap: '20px', justifyContent: 'center', marginTop: '15px' }}>
+            <button className="back-btn" onClick={() => initCanvases(true)} style={{ background: '#ef4444' }}>けして最初から</button>
+            <button className="back-btn" onClick={() => setScreenMode('SELECT')}>えきにもどる</button>
+          </div>
         </div>
       )}
 
@@ -369,7 +421,7 @@ export default function App() {
             <div style={{ position: 'absolute', inset: 0, zIndex: 20, pointerEvents: 'none', backgroundImage: `url(${getTrainImage(currentGroup)})`, backgroundSize: 'contain', backgroundPosition: 'center', backgroundRepeat: 'no-repeat' }} />
           </div>
           <div className="button-group">
-            <button className="reset-btn" onClick={() => initColoringCanvas()} style={{background:'#ef4444', color:'white', border:'none', padding:'10px 20px', borderRadius:'10px'}}>ぜんぶけす</button>
+            <button className="reset-btn" onClick={() => initColoringCanvas()} style={{background:'#ef4444', color:'white', border:'none', padding:'10px 20px', borderRadius:'10px', fontSize: '18px', fontWeight: 'bold'}}>ぜんぶけす</button>
             <button className="back-btn" onClick={handleExitColoring}>おわりにする</button>
           </div>
         </div>
@@ -378,9 +430,9 @@ export default function App() {
       {screenMode === 'RESULT' && (
         <div className="select-screen">
           <h1 className="title">おつかれさまでした！🚂</h1>
-          <p className="subtitle">とってもじょうずにぬれたね！</p>
-          <p>またぬりえをするには、もういちどスタンプをあつめてね！</p>
-          <button className="reward-active-btn" style={{marginTop:'30px'}} onClick={() => setScreenMode('GROUP')}>つぎの ぎょう へ！ ➔</button>
+          <p className="subtitle" style={{fontSize: '22px', color: '#166534', fontWeight: 'bold'}}>とってもじょうずにぬれたね！👏👏</p>
+          <p style={{fontSize: '18px', margin: '20px 0'}}>またぬりえをするには、もういちどスタンプをあつめてね！</p>
+          <button className="reward-active-btn" style={{marginTop:'20px'}} onClick={() => setScreenMode('GROUP')}>つぎの路線へ出発！ ➔</button>
         </div>
       )}
     </div>
