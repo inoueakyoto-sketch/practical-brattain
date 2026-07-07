@@ -1,4 +1,117 @@
-.App {
-  font-family: sans-serif;
-  text-align: center;
+html, body, #root {
+  width: 100%; height: 100%; margin: 0; padding: 0;
+  overflow: hidden; touch-action: none; background-color: #fafaf9;
+  font-family: system-ui, -apple-system, sans-serif;
 }
+
+.app-container {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  height: 100vh; box-sizing: border-box; padding: 15px;
+}
+
+.main-instruction { font-size: 26px; color: #166534; margin: 0 0 5px 0; font-weight: bold; }
+.sub-instruction { font-size: 18px; color: #475569; margin: 0 0 15px 0; }
+
+/* --- 路線（行）えらび画面 --- */
+.group-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px;
+  width: 100%; max-width: 600px; margin-top: 20px;
+}
+.group-button {
+  background: white; border: 4px solid #475569; border-radius: 20px;
+  padding: 22px 10px; font-size: 24px; font-weight: bold; color: #1e293b; cursor: pointer;
+}
+.group-button.all-done { border-color: #22c55e; background-color: #f0fdf4; color: #166534; }
+
+/* --- 駅ホーム 画面 --- */
+.select-screen { text-align: center; width: 100%; max-width: 800px; }
+.title { font-size: 32px; color: #1e293b; margin-bottom: 5px; font-weight: bold; }
+.subtitle { font-size: 18px; color: #475569; margin-bottom: 30px; }
+
+.train-assembly-line {
+  display: flex; align-items: center; justify-content: center;
+  background: #f1f5f9; border: 3px dashed #cbd5e1; padding: 20px; border-radius: 24px; margin-bottom: 35px;
+}
+.locomotive { font-size: 42px; margin-right: 10px; }
+.train-car {
+  display: flex; flex-direction: column; align-items: center;
+  border: 3px solid #cbd5e1; background: white; width: 90px; padding: 10px 5px;
+  border-radius: 16px; margin-right: 12px; position: relative;
+}
+.train-car::after { content: "＝"; position: absolute; right: -20px; top: 42%; color: #94a3b8; font-size: 14px; }
+.train-car.connected { border-color: #22c55e; background-color: #f0fdf4; }
+.car-label { font-size: 14px; font-weight: bold; color: #64748b; margin-bottom: 5px; }
+.car-body { font-size: 36px; color: #cbd5e1; user-select: none; }
+.train-car.connected .car-body { color: #22c55e; }
+
+.station-list { display: flex; gap: 15px; justify-content: center; flex-wrap: wrap; }
+.station-button {
+  background: white; border: 4px solid #3b82f6; border-radius: 20px;
+  padding: 18px 30px; font-size: 24px; font-weight: bold; color: #3b82f6; cursor: pointer;
+}
+.station-button.done { border-color: #22c55e; color: #22c55e; background: #f0fdf4; }
+
+.reward-zone { margin-top: 35px; }
+.reward-locked { font-size: 18px; font-weight: bold; color: #64748b; background: #e2e8f0; padding: 15px 35px; border-radius: 16px; }
+.reward-active-btn { font-size: 24px; font-weight: bold; color: white; background: #f59e0b; border: none; padding: 18px 40px; border-radius: 20px; cursor: pointer; box-shadow: 0 8px 20px rgba(245,158,11,0.3); }
+
+/* --- なぞり書き画面（元デザインワークスペース） --- */
+.train-workspace {
+  display: flex; gap: 20px; align-items: flex-start; justify-content: center; margin-bottom: 15px;
+}
+.stroke-control-panel { display: flex; flex-direction: column; gap: 15px; width: 220px; }
+
+.progress-container { background: white; border: 3px solid #cbd5e1; border-radius: 16px; padding: 10px; margin-bottom: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+.progress-label { font-size: 14px; font-weight: bold; color: #475569; display: flex; justify-content: space-between; margin-bottom: 5px; }
+.progress-track { width: 100%; height: 16px; background: #f1f5f9; border-radius: 8px; overflow: hidden; }
+.progress-fill { height: 100%; background: #22c55e; transition: width 0.2s ease-out; }
+
+.stroke-select-btn {
+  background: white; border: 4px solid #cbd5e1; border-radius: 16px;
+  padding: 15px 15px; font-size: 18px; font-weight: bold; text-align: left; cursor: pointer;
+  display: flex; align-items: center; gap: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.03); transition: all 0.2s;
+}
+.stroke-select-btn.active { color: white; border-color: #1e293b; box-shadow: 0 6px 12px rgba(0,0,0,0.1); }
+.stroke-select-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* 🛠 【UI固定】元のデザインサイズを絶対維持。ぬりえ時の高さ0px崩壊をCSS側でもガードします */
+.canvas-wrapper {
+  position: relative; 
+  width: 500px !important; 
+  height: 500px !important;
+  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.06); 
+  border-radius: 24px; 
+  background: white;
+  overflow: hidden;
+}
+
+.main-canvas { 
+  display: block; 
+  border-radius: 24px; 
+  touch-action: none; 
+  cursor: crosshair; 
+}
+
+.clear-trigger-btn {
+  background: #22c55e; color: white; border: none; border-radius: 20px;
+  padding: 15px 40px; font-size: 24px; font-weight: bold; cursor: pointer;
+  box-shadow: 0 8px 16px rgba(34, 197, 94, 0.3); margin-top: 15px;
+  animation: popIn 0.3s ease-out;
+}
+@keyframes popIn { 0% { transform: scale(0.8); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+
+/* --- 本格ぬりえ画面 --- */
+.color-screen { text-align: center; width: 100%; max-width: 650px; }
+.tool-bar { display: flex; flex-direction: column; gap: 15px; margin-bottom: 15px; background: white; padding: 15px; border-radius: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.04); }
+.size-selector { display: flex; gap: 15px; justify-content: center; align-items: center; }
+.size-label { font-weight: bold; color: #475569; font-size: 18px; }
+.size-btn { background: #f1f5f9; border: 2px solid #cbd5e1; border-radius: 12px; padding: 10px 20px; font-size: 16px; font-weight: bold; cursor: pointer; }
+.size-btn.active { background: #1e293b; color: white; border-color: #1e293b; }
+.palette { display: flex; gap: 12px; justify-content: center; }
+.color-dot { width: 50px; height: 50px; border-radius: 50%; border: 4px solid white; box-shadow: 0 4px 6px rgba(0,0,0,0.1); cursor: pointer; }
+.color-dot.active { transform: scale(1.15); border-color: #1e293b; }
+
+.button-group { display: flex; gap: 20px; justify-content: center; margin-top: 15px; }
+.back-btn { background: #94a3b8; color: white; font-size: 18px; padding: 12px 24px; border: none; border-radius: 16px; cursor: pointer; }
+.reset-btn { background: #ef4444; color: white; font-size: 18px; padding: 12px 24px; border: none; border-radius: 16px; cursor: pointer; }
+.finish-btn { background: #3b82f6; color: white; font-size: 18px; font-weight: bold; padding: 12px 24px; border: none; border-radius: 16px; cursor: pointer; }
