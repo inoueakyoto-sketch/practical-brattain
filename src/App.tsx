@@ -303,7 +303,7 @@ export default function App() {
     }
   };
 
-  // 🎨 【大修正】キャンバスをご指定通りの「真っ白な紙（#ffffff）」として物理初期化します
+  // キャンバスサイズを確定
   const initColoringCanvas = useCallback((force = false) => {
     const canvas = colorCanvasRef.current; if (!canvas) return;
     const ctx = canvas.getContext('2d'); if (!ctx) return;
@@ -317,7 +317,6 @@ export default function App() {
     ctx.lineCap = 'round'; 
     ctx.lineJoin = 'round'; 
     
-    // キャンバスを真っ白なスケッチブックにします
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
   }, []);
@@ -331,8 +330,12 @@ export default function App() {
     }
   }, [screenMode, initColoringCanvas]);
 
+  // 🛠 【修正ポイント】ぬりえ画面で1本指の時だけ色を塗り、2本指（ピンチ）の時はブラウザの拡大縮小に処理を譲る
   const startPainting = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    // 指1本（またはスタイラスペン1本）のときだけお絵描きを有効にする
+    if (e.pointerType === 'touch' && !e.isPrimary) return; 
     if (e.cancelable) e.preventDefault(); 
+    
     const pt = getCoordinates(e, colorCanvasRef);
     isPaintingRef.current = true; 
     paintLastPointRef.current = pt;
@@ -348,7 +351,9 @@ export default function App() {
 
   const paint = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!isPaintingRef.current || !paintLastPointRef.current) return;
+    if (e.pointerType === 'touch' && !e.isPrimary) return; 
     if (e.cancelable) e.preventDefault(); 
+    
     const pt = getCoordinates(e, colorCanvasRef);
     const last = paintLastPointRef.current;
 
@@ -480,7 +485,7 @@ export default function App() {
       {screenMode === 'COLOR' && (
         <div className="color-screen">
           <h1 className="title">🎨 出発進行！【{currentGroup}ぎょう】のごほうびぬりえ</h1>
-          <p className="subtitle">すきな色をえらんで、でんしゃの上から自由に色をぬろう！</p>
+          <p className="subtitle">はみ出しても線が消えないよ！2本指で広げると大きく拡大できるよ！</p>
           <div className="tool-bar">
             <div className="size-selector">
               <span className="size-label">ペンの太さ：</span>
@@ -495,25 +500,24 @@ export default function App() {
             </div>
           </div>
 
-          {/* 🛠 【完全解決のレイヤー逆転構造】
-              1. 一番下の土台（canvas-wrapper）を真っ白に指定。
-              2. そのすぐ上に、色を塗る「白いキャンバス（zIndex: 10）」を配置。
-              3. そして一番手前に「背景透過されたでんしゃ画像（zIndex: 20）」を重ねます。 */}
-          <div className="canvas-wrapper" style={{ margin: '0 auto', position: 'relative', width: `${CANVAS_SIZE}px`, height: `${CANVAS_SIZE}px`, background: '#ffffff' }}>
-            {/* 1. 下層：お絵描きするキャンバス（白紙） */}
+          {/* 🛠 【修正ポイント】ぬりえのキャンバス枠枠について、
+              touchAction: 'pinch-zoom' を設定。これにより、1本指なら色塗り、2本指ピンチアウトなら
+              iPad標準の動きで安全に「ぬりえ枠ごと大きく拡大・縮小・移動」ができるようになり、細かい車輪なども超スムーズに塗れます。 */}
+          <div className="canvas-wrapper" style={{ margin: '0 auto', position: 'relative', width: `${CANVAS_SIZE}px`, height: `${CANVAS_SIZE}px`, background: '#ffffff', touchAction: 'pinch-zoom' }}>
+            {/* 白紙（インクを受けるレイヤー） */}
             <canvas 
               ref={colorCanvasRef} 
               style={{ 
                 position: 'absolute', top: 0, left: 0,
                 width: '100%', height: '100%', display: 'block', borderRadius: '24px', 
-                cursor: 'crosshair', touchAction: 'none', zIndex: 10
+                cursor: 'crosshair', zIndex: 10
               }} 
               onPointerDown={startPainting} 
               onPointerMove={paint} 
               onPointerUp={stopPainting} 
               onPointerCancel={stopPainting} 
             />
-            {/* 2. 最前面：透過されたでんしゃの絵（pointerEvents: 'none' で指を100%すり抜けさせます） */}
+            {/* 透過でんしゃ画像（最前面） */}
             <div 
               style={{ 
                 position: 'absolute', inset: 0, zIndex: 20, pointerEvents: 'none',
