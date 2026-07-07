@@ -1,21 +1,36 @@
 html, body, #root {
   width: 100%; height: 100%; margin: 0; padding: 0;
-  overflow: hidden; touch-action: none; background-color: #fafaf9;
+  background-color: #fafaf9;
   font-family: system-ui, -apple-system, sans-serif;
 }
 
+/* アプリ全体のコンテナ：縦スクロールを全体で防ぎつつ中央に寄せる */
 .app-container {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  height: 100vh; box-sizing: border-box; padding: 15px;
+  min-height: 100vh; box-sizing: border-box; padding: 15px;
 }
 
 .main-instruction { font-size: 26px; color: #166534; margin: 0 0 5px 0; font-weight: bold; }
 .sub-instruction { font-size: 18px; color: #475569; margin: 0 0 15px 0; }
 
-/* --- 路線（行）えらび画面 --- */
+/* --- 🌟 TOP・路線（行）えらび画面（中央揃えを絶対固定） --- */
+.select-screen { 
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center; 
+  width: 100%; 
+  max-width: 800px; 
+  margin: 0 auto; /* 左右の余白を自動にして中央へ */
+}
+
+.title { font-size: 32px; color: #1e293b; margin-bottom: 5px; font-weight: bold; width: 100%; text-align: center; }
+.subtitle { font-size: 18px; color: #475569; margin-bottom: 30px; width: 100%; text-align: center; }
+
 .group-grid {
   display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px;
-  width: 100%; max-width: 600px; margin-top: 20px;
+  width: 100%; max-width: 600px; margin: 20px auto 0 auto;
 }
 .group-button {
   background: white; border: 4px solid #475569; border-radius: 20px;
@@ -24,13 +39,10 @@ html, body, #root {
 .group-button.all-done { border-color: #22c55e; background-color: #f0fdf4; color: #166534; }
 
 /* --- 駅ホーム 画面 --- */
-.select-screen { text-align: center; width: 100%; max-width: 800px; }
-.title { font-size: 32px; color: #1e293b; margin-bottom: 5px; font-weight: bold; }
-.subtitle { font-size: 18px; color: #475569; margin-bottom: 30px; }
-
 .train-assembly-line {
   display: flex; align-items: center; justify-content: center;
   background: #f1f5f9; border: 3px dashed #cbd5e1; padding: 20px; border-radius: 24px; margin-bottom: 35px;
+  width: 100%; max-width: 700px; box-sizing: border-box;
 }
 .locomotive { font-size: 42px; margin-right: 10px; }
 .train-car {
@@ -44,18 +56,18 @@ html, body, #root {
 .car-body { font-size: 36px; color: #cbd5e1; user-select: none; }
 .train-car.connected .car-body { color: #22c55e; }
 
-.station-list { display: flex; gap: 15px; justify-content: center; flex-wrap: wrap; }
+.station-list { display: flex; gap: 15px; justify-content: center; flex-wrap: wrap; width: 100%; }
 .station-button {
   background: white; border: 4px solid #3b82f6; border-radius: 20px;
   padding: 18px 30px; font-size: 24px; font-weight: bold; color: #3b82f6; cursor: pointer;
 }
 .station-button.done { border-color: #22c55e; color: #22c55e; background: #f0fdf4; }
 
-.reward-zone { margin-top: 35px; }
-.reward-locked { font-size: 18px; font-weight: bold; color: #64748b; background: #e2e8f0; padding: 15px 35px; border-radius: 16px; }
+.reward-zone { margin-top: 35px; width: 100%; }
+.reward-locked { font-size: 18px; font-weight: bold; color: #64748b; background: #e2e8f0; padding: 15px 35px; border-radius: 16px; display: inline-block; }
 .reward-active-btn { font-size: 24px; font-weight: bold; color: white; background: #f59e0b; border: none; padding: 18px 40px; border-radius: 20px; cursor: pointer; box-shadow: 0 8px 20px rgba(245,158,11,0.3); }
 
-/* --- なぞり書き画面（元デザインワークスペース） --- */
+/* --- なぞり書き ＆ ぬりえ 共通ベース --- */
 .train-workspace {
   display: flex; gap: 20px; align-items: flex-start; justify-content: center; margin-bottom: 15px;
 }
@@ -74,15 +86,12 @@ html, body, #root {
 .stroke-select-btn.active { color: white; border-color: #1e293b; box-shadow: 0 6px 12px rgba(0,0,0,0.1); }
 .stroke-select-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-/* 🛠 【UI固定】元のデザインサイズを絶対維持。ぬりえ時の高さ0px崩壊をCSS側でもガードします */
+/* キャンバスを包む基本のデコレーション枠 */
 .canvas-wrapper {
   position: relative; 
-  width: 500px !important; 
-  height: 500px !important;
   box-shadow: 0 15px 35px rgba(0, 0, 0, 0.06); 
   border-radius: 24px; 
   background: white;
-  overflow: hidden;
 }
 
 .main-canvas { 
@@ -101,7 +110,7 @@ html, body, #root {
 @keyframes popIn { 0% { transform: scale(0.8); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
 
 /* --- 本格ぬりえ画面 --- */
-.color-screen { text-align: center; width: 100%; max-width: 650px; }
+.color-screen { text-align: center; width: 100%; max-width: 650px; margin: 0 auto; }
 .tool-bar { display: flex; flex-direction: column; gap: 15px; margin-bottom: 15px; background: white; padding: 15px; border-radius: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.04); }
 .size-selector { display: flex; gap: 15px; justify-content: center; align-items: center; }
 .size-label { font-weight: bold; color: #475569; font-size: 18px; }
