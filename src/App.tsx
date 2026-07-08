@@ -91,7 +91,7 @@ export default function App() {
 
   const [timeLeft, setTimeLeft] = useState(coloringTimeLimit);
 
-  // 💡 KPI計測用 State (潜時と所要時間)
+  // KPI計測用 State (潜時と所要時間)
   const [taskStartTime, setTaskStartTime] = useState<number>(0);
   const [latencyLogged, setLatencyLogged] = useState<boolean>(false);
 
@@ -136,7 +136,6 @@ export default function App() {
   };
 
   const handleApplyClearAndCelebrate = () => {
-    // 💡 KPIログ出力（バックエンドへの送信を想定）
     const completionTime = Date.now() - taskStartTime;
     console.log(`[Social KPI Log] 文字: ${selectedChar.name}, 完了時間: ${completionTime}ms`);
 
@@ -151,7 +150,6 @@ export default function App() {
     }, 2800);
   };
 
-  // 💡 NFCタグ読み取り機能（エラー修正版）
   const handleNFCScan = async () => {
     if ('NDEFReader' in window) {
       try {
@@ -229,7 +227,6 @@ export default function App() {
       setCoverPercent(0); 
       setStrokeIdx(0); 
       isDrawingRef.current = false; 
-      // 💡 画面リセット時にKPIタイマーもリセット
       setTaskStartTime(Date.now());
       setLatencyLogged(false);
     }
@@ -285,7 +282,9 @@ export default function App() {
         
         if (displayPercent > currentLimit) displayPercent = currentLimit;
         if (isDrawingRef.current && currentStroke === totalStrokes - 1) { if (displayPercent > 96) displayPercent = 96; }
-        if (!isDrawingRef.current && currentStroke === totalStrokes - 1 && rawPercent * 1.5 >= 85) displayPercent = 100;
+        
+        // 💡 修正箇所：最終画を書き終えた後、50%以上塗れていれば「100%」に引き上げてクリアさせる
+        if (!isDrawingRef.current && currentStroke === totalStrokes - 1 && rawPercent * 1.5 >= 50) displayPercent = 100;
         
         setCoverPercent(Math.min(100, Math.floor(displayPercent)));
       }
@@ -301,7 +300,6 @@ export default function App() {
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (coverPercent >= 100) return;
     
-    // 💡 KPI: 潜時（Latency）の記録
     if (!latencyLogged && taskStartTime > 0) {
       const latency = Date.now() - taskStartTime;
       console.log(`[Social KPI Log] 文字: ${selectedChar.name}, 潜時(Latency): ${latency}ms`);
@@ -315,11 +313,15 @@ export default function App() {
     const mainCtx = canvasRef.current!.getContext('2d')!;
     const userCtx = userCanvasRef.current!.getContext('2d')!;
 
+    // 💡 修正箇所：塗りつぶし用の見えない筆を、当たり判定枠より太く設定（一気に100%塗れるように）
+    const currentHitWidth = selectedChar.hitWidth || 80;
+    const coverageBrushSize = currentHitWidth + 40; 
+
     mainCtx.beginPath();
     if (hit) {
       mainCtx.arc(pt.x, pt.y, 12, 0, Math.PI * 2); 
       mainCtx.fillStyle = STROKE_COLORS[strokeIdxRef.current % STROKE_COLORS.length]; mainCtx.fill(); 
-      userCtx.beginPath(); userCtx.arc(pt.x, pt.y, 24, 0, Math.PI * 2); userCtx.fillStyle = '#00FF00'; userCtx.fill();
+      userCtx.beginPath(); userCtx.arc(pt.x, pt.y, coverageBrushSize / 2, 0, Math.PI * 2); userCtx.fillStyle = '#00FF00'; userCtx.fill();
     } else {
       mainCtx.arc(pt.x, pt.y, 4, 0, Math.PI * 2); mainCtx.fillStyle = `rgba(150, 150, 150, 0.4)`; mainCtx.fill(); 
     }
@@ -335,6 +337,10 @@ export default function App() {
     const mainCtx = canvasRef.current!.getContext('2d')!;
     const userCtx = userCanvasRef.current!.getContext('2d')!;
 
+    // 💡 修正箇所：動かした時も見えない筆を太くする
+    const currentHitWidth = selectedChar.hitWidth || 80;
+    const coverageBrushSize = currentHitWidth + 40;
+
     if (dt > 0) {
       const speed = distance / dt;
       const isGoodSpeed = speed > 0.001 && speed < 1.2; 
@@ -344,7 +350,7 @@ export default function App() {
       if (isGoodSpeed && hit) {
         mainCtx.strokeStyle = STROKE_COLORS[strokeIdxRef.current % STROKE_COLORS.length]; mainCtx.lineWidth = 24; mainCtx.stroke();
         userCtx.beginPath(); userCtx.moveTo(last.x, last.y); userCtx.lineTo(pt.x, pt.y); 
-        userCtx.strokeStyle = '#00FF00'; userCtx.lineWidth = 48; userCtx.stroke();
+        userCtx.strokeStyle = '#00FF00'; userCtx.lineWidth = coverageBrushSize; userCtx.stroke();
         hitDistanceRef.current += distance; 
       } else {
         mainCtx.strokeStyle = `rgba(150, 150, 150, 0.4)`; mainCtx.lineWidth = 8; mainCtx.stroke();
@@ -458,7 +464,6 @@ export default function App() {
           <h1 className="title">🚉 路線をえらぼう</h1>
           <p className="subtitle">{targetClearCount}つクリアすると{coloringTimeLimit / 60}分間ぬりえができるよ！</p>
           
-          {/* 💡 NFC連動ボタン */}
           <button onClick={handleNFCScan} style={{ marginBottom: '20px', padding: '12px 24px', fontSize: '18px', fontWeight: 'bold', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '20px', cursor: 'pointer', boxShadow: '0 4px 10px rgba(59, 130, 246, 0.3)' }}>
             📄 プリントのシールをタッチ！
           </button>
@@ -587,7 +592,6 @@ export default function App() {
         </div>
       )}
 
-      {/* 💡 フッターブランディング */}
       <div style={{ position: 'absolute', bottom: '15px', width: '100%', textAlign: 'center', color: '#94a3b8', fontSize: '12px', fontWeight: 'bold' }}>
         Seiki no Ryoiku Kyoshitsu GoalFree B5
       </div>
