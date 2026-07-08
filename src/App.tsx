@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import './styles.css';
 
-// 🚉 画像インポート
+// 🚉 画像インポート (ご自身の環境に合わせてください)
 import trainA from './train_a.png';
 import trainKa from './train_ka.png';
 import trainSa from './train_sa.png';
@@ -13,21 +13,15 @@ import trainYa from './train_ya.png';
 import trainRa from './train_ra.png';
 import trainWa from './train_wa.png';
 
-// 50音データ
 interface NodePoint { x: number; y: number; }
-// 💡変更点：hitWidth（当たり判定の太さ）を追加できるようにしました
 interface CharData { id: string; name: string; row: string; nodes: NodePoint[][]; hitWidth?: number; }
 
 const ALL_CHARS: CharData[] = [
-  // 💡変更点：「あ行」に個別の当たり判定の太さ（hitWidth）を設定しました。
-  // 数値が大きいほど判定が甘く（正解になりやすく）なります。設定がない場合は自動的に「80」になります。
   { id: 'a', name: 'あ', row: 'あ', hitWidth: 100, nodes: [[{x:140,y:180},{x:340,y:170}], [{x:245,y:110},{x:240,y:250},{x:235,y:390}], [{x:290,y:220},{x:160,y:310},{x:180,y:400},{x:320,y:360},{x:270,y:240},{x:240,y:350}]] },
   { id: 'i', name: 'い', row: 'あ', hitWidth: 70, nodes: [[{x:160,y:160},{x:150,y:280},{x:180,y:350}], [{x:310,y:190},{x:330,y:290}]] },
   { id: 'u', name: 'う', row: 'あ', hitWidth: 85, nodes: [[{x:220,y:130},{x:280,y:160}], [{x:180,y:220},{x:310,y:230},{x:280,y:350},{x:200,y:410}]] },
   { id: 'e', name: 'え', row: 'あ', hitWidth: 90, nodes: [[{x:230,y:110},{x:270,y:140}], [{x:160,y:220},{x:330,y:210},{x:170,y:370},{x:300,y:340},{x:340,y:390}]] },
   { id: 'o', name: 'お', row: 'あ', hitWidth: 100, nodes: [[{x:140,y:190},{x:310,y:180}], [{x:230,y:120},{x:225,y:280},{x:150,y:300},{x:200,y:250},{x:320,y:290},{x:250,y:400}], [{x:315,y:130},{x:345,y:185}]] },
-  
-  // 以降の文字は、hitWidthを省略しているためデフォルトの「80（かなり甘め）」が適用されます
   { id: 'ka', name: 'か', row: 'か', nodes: [[{x:160,y:180},{x:280,y:160},{x:330,y:240}], [{x:260,y:110},{x:220,y:380}], [{x:330,y:140},{x:360,y:210}]] },
   { id: 'ki', name: 'き', row: 'か', nodes: [[{x:160,y:170},{x:320,y:160}], [{x:150,y:230},{x:330,y:220}], [{x:250,y:110},{x:210,y:340}], [{x:180,y:350},{x:280,y:380}]] },
   { id: 'ku', name: 'く', row: 'か', nodes: [[{x:160,y:180},{x:330,y:260},{x:160,y:340}]] },
@@ -83,7 +77,7 @@ const getTrainImage = (group: string) => {
 };
 
 export default function App() {
-  const [screenMode, setScreenMode] = useState<'GROUP' | 'SELECT' | 'TRAIN' | 'COLOR' | 'RESULT'>('GROUP');
+  const [screenMode, setScreenMode] = useState<'GROUP' | 'SELECT' | 'TRAIN' | 'COLOR' | 'RESULT' | 'SETTINGS'>('GROUP');
   const [currentGroup, setCurrentGroup] = useState<string>('あ');
   const [selectedChar, setSelectedChar] = useState<CharData>(ALL_CHARS[0]);
   const [clearedChars, setClearedChars] = useState<string[]>([]);
@@ -91,8 +85,11 @@ export default function App() {
   const [coverPercent, setCoverPercent] = useState<number>(0);
   const [showEpicCelebration, setShowEpicCelebration] = useState(false);
 
-  // 🕒 タイマー
-  const [timeLeft, setTimeLeft] = useState(180);
+  // 💡支援者用設定（シェイピング用）
+  const [targetClearCount, setTargetClearCount] = useState<number>(5); // デフォルトは5文字でクリア
+  const [coloringTimeLimit, setColoringTimeLimit] = useState<number>(180); // デフォルトは3分(180秒)
+
+  const [timeLeft, setTimeLeft] = useState(coloringTimeLimit);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const hitCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -101,382 +98,4 @@ export default function App() {
   const lastPointRef = useRef<{x: number, y: number, time: number} | null>(null);
   const hitDistanceRef = useRef(0);
   const lastCalcTimeRef = useRef(0);
-  const strokeIdxRef = useRef(0); 
-
-  // ぬりえ用
-  const colorCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [currentColor, setCurrentColor] = useState('#ff4757');
-  const [brushSize, setBrushSize] = useState(24); 
-  const isPaintingRef = useRef(false);
-  const paintLastPointRef = useRef<{x: number, y: number} | null>(null);
-
-  const groupChars = ALL_CHARS.filter(c => c.row === currentGroup);
-  const isGroupCleared = groupChars.every(c => clearedChars.includes(c.id));
-
-  useEffect(() => { strokeIdxRef.current = strokeIdx; }, [strokeIdx]);
-
-  // 🕒 タイマーループ
-  useEffect(() => {
-    if (screenMode !== 'COLOR' || timeLeft <= 0) return;
-    const timer = setTimeout(() => { setTimeLeft(prev => prev - 1); }, 1000);
-    return () => clearTimeout(timer);
-  }, [screenMode, timeLeft]);
-
-  // 自動ロック監視
-  useEffect(() => {
-    if (screenMode === 'COLOR' && timeLeft === 0) {
-      handleExitColoring();
-    }
-  }, [timeLeft, screenMode]);
-
-  const handleExitColoring = () => {
-    const currentGroupCharIds = ALL_CHARS.filter(c => c.row === currentGroup).map(c => c.id);
-    setClearedChars(prev => prev.filter(id => !currentGroupCharIds.includes(id)));
-    setScreenMode('RESULT');
-  };
-
-  const handleApplyClearAndCelebrate = () => {
-    setShowEpicCelebration(true);
-    setTimeout(() => {
-      setShowEpicCelebration(false);
-      setClearedChars(prev => {
-        if (!prev.includes(selectedChar.id)) return [...prev, selectedChar.id];
-        return prev;
-      });
-      setScreenMode('SELECT');
-    }, 2800);
-  };
-
-  // 💡変更点：なぞり書き用キャンバス初期化に Errorless Learning ロジックを組み込みました
-  const initCanvases = useCallback((force = false) => {
-    const mainCtx = canvasRef.current?.getContext('2d');
-    const hitCtx = hitCanvasRef.current?.getContext('2d', { willReadFrequently: true });
-    const userCtx = userCanvasRef.current?.getContext('2d', { willReadFrequently: true });
-    if (!mainCtx || !hitCtx || !userCtx) return;
-
-    const dpr = window.devicePixelRatio || 1;
-    [canvasRef.current!, hitCanvasRef.current!, userCanvasRef.current!].forEach(c => {
-      if (c) { c.width = CANVAS_SIZE * dpr; c.height = CANVAS_SIZE * dpr; }
-    });
-
-    mainCtx.setTransform(1, 0, 0, 1, 0, 0); hitCtx.setTransform(1, 0, 0, 1, 0, 0); userCtx.setTransform(1, 0, 0, 1, 0, 0);
-    mainCtx.scale(dpr, dpr); hitCtx.scale(dpr, dpr); userCtx.scale(dpr, dpr);
-    mainCtx.lineCap = 'round'; mainCtx.lineJoin = 'round';
-    userCtx.lineCap = 'round'; userCtx.lineJoin = 'round';
-
-    mainCtx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
-    hitCtx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
-    userCtx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
-
-    mainCtx.strokeStyle = '#cbd5e1'; mainCtx.lineWidth = 1; mainCtx.strokeRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
-    mainCtx.strokeStyle = '#e2e8f0'; mainCtx.lineWidth = 2; mainCtx.setLineDash([10, 8]);
-    mainCtx.beginPath(); mainCtx.moveTo(CANVAS_SIZE/2, 0); mainCtx.lineTo(CANVAS_SIZE/2, CANVAS_SIZE); mainCtx.moveTo(0, CANVAS_SIZE/2); mainCtx.lineTo(CANVAS_SIZE, CANVAS_SIZE/2); mainCtx.stroke(); mainCtx.setLineDash([]);
-
-    const fontStr = "bold 310px 'UD Digital Kyokasho NK-R', 'Hiragino Maru Gothic ProN', sans-serif";
-    mainCtx.font = fontStr; mainCtx.fillStyle = "#e2e8f0"; mainCtx.textAlign = "center"; mainCtx.textBaseline = "middle";
-    mainCtx.fillText(selectedChar.name, CANVAS_SIZE/2, CANVAS_SIZE/2 + 15);
-
-    // 💡変更点：個別のhitWidthを取得（なければデフォルト80）、端と角を丸くして判定をスムーズに
-    const currentHitWidth = selectedChar.hitWidth || 80;
-    hitCtx.font = fontStr; 
-    hitCtx.strokeStyle = '#FF0000'; 
-    hitCtx.fillStyle = '#FF0000'; 
-    hitCtx.lineWidth = currentHitWidth; 
-    hitCtx.lineCap = 'round'; 
-    hitCtx.lineJoin = 'round'; 
-    hitCtx.textAlign = "center"; 
-    hitCtx.textBaseline = "middle";
-    hitCtx.strokeText(selectedChar.name, CANVAS_SIZE/2, CANVAS_SIZE/2 + 15);
-    hitCtx.fillText(selectedChar.name, CANVAS_SIZE/2, CANVAS_SIZE/2 + 15);
-
-    if (force) { setCoverPercent(0); setStrokeIdx(0); isDrawingRef.current = false; }
-  }, [selectedChar]);
-
-  useEffect(() => { if (screenMode === 'TRAIN') setTimeout(() => initCanvases(true), 50); }, [screenMode, initCanvases]);
-
-  const checkHit = (x: number, y: number) => {
-    const hitCanvas = hitCanvasRef.current;
-    if (!hitCanvas) return false;
-    const hitCtx = hitCanvas.getContext('2d', { willReadFrequently: true });
-    if (!hitCtx) return false;
-    try {
-      const dpr = window.devicePixelRatio || 1;
-      const safeX = Math.floor(Math.max(0, Math.min(hitCanvas.width - 1, x * dpr)));
-      const safeY = Math.floor(Math.max(0, Math.min(hitCanvas.height - 1, y * dpr)));
-      return hitCtx.getImageData(safeX, safeY, 1, 1).data[3] > 0;
-    } catch(err) { return false; }
-  };
-
-  const calculateCoverage = () => {
-    const hitCanvas = hitCanvasRef.current;
-    const userCanvas = userCanvasRef.current;
-    if (!hitCanvas || !userCanvas) return;
-    const hitCtx = hitCanvas.getContext('2d', { willReadFrequently: true });
-    const userCtx = userCanvas.getContext('2d', { willReadFrequently: true });
-    if (!hitCtx || !userCtx) return;
-
-    try {
-      const w = hitCanvas.width; const h = hitCanvas.height;
-      const hitData = hitCtx.getImageData(0, 0, w, h).data;
-      const userData = userCtx.getImageData(0, 0, w, h).data;
-      
-      let targetPixels = 0, coveredPixels = 0;
-      for (let i = 0; i < hitData.length; i += 16) {
-        if (hitData[i + 3] > 0) {
-          targetPixels++;
-          if (userData[i + 3] > 0) coveredPixels++;
-        }
-      }
-      
-      if (targetPixels > 0) {
-        let rawPercent = (coveredPixels / targetPixels) * 100;
-        let displayPercent = rawPercent * 1.5; 
-        
-        const currentStroke = strokeIdxRef.current;
-        const totalStrokes = selectedChar.nodes.length;
-        const currentLimit = Math.min(100, ((currentStroke + 1) / totalStrokes) * 100);
-        
-        if (displayPercent > currentLimit) displayPercent = currentLimit;
-        if (isDrawingRef.current && currentStroke === totalStrokes - 1) { if (displayPercent > 96) displayPercent = 96; }
-        if (!isDrawingRef.current && currentStroke === totalStrokes - 1 && rawPercent * 1.5 >= 85) displayPercent = 100;
-        
-        setCoverPercent(Math.min(100, Math.floor(displayPercent)));
-      }
-    } catch (err) {}
-  };
-
-  const getCoordinates = (e: React.PointerEvent<HTMLCanvasElement>, ref: React.MutableRefObject<HTMLCanvasElement | null>) => {
-    if (!ref.current) return { x: 0, y: 0, time: Date.now() };
-    const rect = ref.current.getBoundingClientRect();
-    return { x: ((e.clientX - rect.left) / rect.width) * CANVAS_SIZE, y: ((e.clientY - rect.top) / rect.height) * CANVAS_SIZE, time: Date.now() };
-  };
-
-  const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (coverPercent >= 100) return;
-    const pt = getCoordinates(e, canvasRef);
-    isDrawingRef.current = true; lastPointRef.current = pt; hitDistanceRef.current = 0; 
-
-    const hit = checkHit(pt.x, pt.y);
-    const mainCtx = canvasRef.current!.getContext('2d')!;
-    const userCtx = userCanvasRef.current!.getContext('2d')!;
-
-    mainCtx.beginPath();
-    if (hit) {
-      mainCtx.arc(pt.x, pt.y, 12, 0, Math.PI * 2); 
-      mainCtx.fillStyle = STROKE_COLORS[strokeIdxRef.current % STROKE_COLORS.length]; mainCtx.fill(); 
-      userCtx.beginPath(); userCtx.arc(pt.x, pt.y, 24, 0, Math.PI * 2); userCtx.fillStyle = '#00FF00'; userCtx.fill();
-    } else {
-      mainCtx.arc(pt.x, pt.y, 4, 0, Math.PI * 2); mainCtx.fillStyle = `rgba(150, 150, 150, 0.4)`; mainCtx.fill(); 
-    }
-  };
-
-  const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!isDrawingRef.current || !lastPointRef.current || coverPercent >= 100) return;
-    const pt = getCoordinates(e, canvasRef);
-    const last = lastPointRef.current;
-    const dt = pt.time - last.time;
-    const distance = Math.hypot(pt.x - last.x, pt.y - last.y);
-    
-    const mainCtx = canvasRef.current!.getContext('2d')!;
-    const userCtx = userCanvasRef.current!.getContext('2d')!;
-
-    if (dt > 0) {
-      const speed = distance / dt;
-      const isGoodSpeed = speed > 0.001 && speed < 1.2; 
-      const hit = checkHit(pt.x, pt.y);
-      mainCtx.beginPath(); mainCtx.moveTo(last.x, last.y); mainCtx.lineTo(pt.x, pt.y); 
-
-      if (isGoodSpeed && hit) {
-        mainCtx.strokeStyle = STROKE_COLORS[strokeIdxRef.current % STROKE_COLORS.length]; mainCtx.lineWidth = 24; mainCtx.stroke();
-        userCtx.beginPath(); userCtx.moveTo(last.x, last.y); userCtx.lineTo(pt.x, pt.y); 
-        userCtx.strokeStyle = '#00FF00'; userCtx.lineWidth = 48; userCtx.stroke();
-        hitDistanceRef.current += distance; 
-      } else {
-        mainCtx.strokeStyle = `rgba(150, 150, 150, 0.4)`; mainCtx.lineWidth = 8; mainCtx.stroke();
-      }
-    }
-    lastPointRef.current = pt;
-    if (pt.time - lastCalcTimeRef.current > 150) { calculateCoverage(); lastCalcTimeRef.current = pt.time; }
-  };
-
-  const handlePointerUp = () => {
-    if (!isDrawingRef.current) return;
-    isDrawingRef.current = false;
-    if (hitDistanceRef.current > 30) {
-      if (strokeIdxRef.current < selectedChar.nodes.length - 1) setStrokeIdx(prev => prev + 1);
-    }
-    calculateCoverage();
-  };
-
-  const initColoringCanvas = useCallback(() => {
-    const canvas = colorCanvasRef.current; if (!canvas) return;
-    const ctx = canvas.getContext('2d'); if (!ctx) return;
-    const dpr = window.devicePixelRatio || 1;
-    canvas.width = CANVAS_SIZE * dpr; canvas.height = CANVAS_SIZE * dpr;
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.scale(dpr, dpr); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-    ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
-  }, []);
-
-  const startPainting = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (e.pointerType === 'touch' && !e.isPrimary) return; 
-    if (e.cancelable) e.preventDefault();
-    isPaintingRef.current = true;
-    const pt = getCoordinates(e, colorCanvasRef);
-    paintLastPointRef.current = { x: pt.x, y: pt.y };
-    const ctx = colorCanvasRef.current!.getContext('2d')!;
-    ctx.beginPath(); ctx.arc(pt.x, pt.y, brushSize / 2, 0, Math.PI * 2); ctx.fillStyle = currentColor; ctx.fill();
-  };
-
-  const paint = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!isPaintingRef.current || !paintLastPointRef.current || (e.pointerType === 'touch' && !e.isPrimary)) return;
-    if (e.cancelable) e.preventDefault();
-    const pt = getCoordinates(e, colorCanvasRef);
-    const ctx = colorCanvasRef.current!.getContext('2d')!;
-    ctx.beginPath(); ctx.lineWidth = brushSize; ctx.strokeStyle = currentColor;
-    ctx.moveTo(paintLastPointRef.current.x, paintLastPointRef.current.y);
-    ctx.lineTo(pt.x, pt.y); ctx.stroke();
-    paintLastPointRef.current = { x: pt.x, y: pt.y };
-  };
-
-  const stopPainting = () => { isPaintingRef.current = false; };
-
-  const formatTime = (seconds: number) => {
-    const m = Math.floor(seconds / 60);
-    const s = seconds % 60;
-    return `${m}:${s.toString().padStart(2, '0')}`;
-  };
-
-  return (
-    <div className="app-container">
-      {showEpicCelebration && (
-        <div className="celebration-overlay">
-          <div className="hanamaru" style={{ transform: 'scale(1)', opacity: 1 }}>💮</div>
-          <div className="perfect-text">すごすぎる！！</div>
-          {[...Array(40)].map((_, i) => (
-            <div key={i} className="confetti" style={{ 
-              left: `${Math.random() * 100}vw`, 
-              backgroundColor: STROKE_COLORS[i % 4],
-              animationDelay: `${Math.random() * 1.5}s`,
-              transform: `scale(${Math.random() * 1.5 + 0.5})`
-            }} />
-          ))}
-        </div>
-      )}
-
-      {screenMode === 'GROUP' && (
-        <div className="select-screen">
-          <h1 className="title">🚉 路線をえらぼう</h1>
-          <p className="subtitle">ぜんぶクリアすると3分間ぬりえができるよ！</p>
-          <div className="group-grid">
-            {['あ', 'か', 'さ', 'た', 'な', 'は', 'ま', 'や', 'ら', 'わ'].map(g => (
-              <button key={g} className={`group-button ${ALL_CHARS.filter(c => c.row === g).every(c => clearedChars.includes(c.id)) ? 'all-done' : ''}`} 
-                onClick={() => { setCurrentGroup(g); setScreenMode('SELECT'); }}>
-                {g}ぎょう
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {screenMode === 'SELECT' && (
-        <div className="select-screen">
-          <h1 className="title">🚉 {currentGroup}ぎょう</h1>
-          <div className="train-assembly-line">
-            <span className="locomotive">🚂</span>
-            {groupChars.map(char => (
-              <div key={char.id} className={`train-car ${clearedChars.includes(char.id) ? 'connected' : ''}`}>
-                <div className="car-body">🚃</div>
-              </div>
-            ))}
-          </div>
-          <div className="station-list">
-            {groupChars.map(char => (
-              <button key={char.id} className={`station-button ${clearedChars.includes(char.id) ? 'done' : ''}`} onClick={() => { setSelectedChar(char); setScreenMode('TRAIN'); }}>
-                {char.name}
-              </button>
-            ))}
-          </div>
-          <div className="reward-zone" style={{marginTop: '30px'}}>
-            {isGroupCleared ? (
-              <button className="reward-active-btn" onClick={() => { setTimeLeft(180); setScreenMode('COLOR'); setTimeout(() => initColoringCanvas(), 50); }}>🎉 しゅっぱつ進行！ぬりえへ（3分）</button>
-            ) : (
-              <div className="reward-locked">🔒 あと {groupChars.length - groupChars.filter(c => clearedChars.includes(c.id)).length} つでぬりえだよ！</div>
-            )}
-          </div>
-          <button className="back-btn" onClick={() => setScreenMode('GROUP')} style={{marginTop:'20px'}}>もどる</button>
-        </div>
-      )}
-
-      {screenMode === 'TRAIN' && (
-        <div className="train-screen" style={{ textAlign: 'center' }}>
-          <h1 className="main-instruction">「{selectedChar.name}」をなぞろう！</h1>
-          <div className="train-workspace">
-            <div className="stroke-control-panel">
-              <div className="progress-container">
-                <div className="progress-label">
-                  <span>{strokeIdx + 1}画目 / ぜんぶで {selectedChar.nodes.length}画</span>
-                  <span>{coverPercent}%</span>
-                </div>
-                <div className="progress-track"><div className="progress-fill" style={{ width: `${coverPercent}%` }}></div></div>
-              </div>
-              {Array.from({ length: selectedChar.nodes.length }).map((_, i) => (
-                <button key={i} className={`stroke-select-btn ${strokeIdx === i ? 'active' : ''}`} style={{ backgroundColor: strokeIdx === i ? STROKE_COLORS[i % 4] : 'white' }} disabled={i > strokeIdx}>
-                   🚃 {i+1}画目
-                </button>
-              ))}
-            </div>
-            <div className="canvas-wrapper" style={{ width: '500px', height: '500px' }}>
-              <canvas ref={canvasRef} className="main-canvas" style={{ width: '100%', height: '100%' }} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} />
-              <canvas ref={hitCanvasRef} style={{ display: 'none' }} />
-              <canvas ref={userCanvasRef} style={{ display: 'none' }} />
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: '20px', justifyContent: 'center', marginTop: '15px' }}>
-            {coverPercent >= 100 && strokeIdx === selectedChar.nodes.length - 1 ? (
-              <button className="clear-trigger-btn" onClick={handleApplyClearAndCelebrate} style={{ fontSize: '24px', padding: '15px 40px' }}>🏁 できた！駅のスタンプをおす 💮</button>
-            ) : (
-              <>
-                <button className="back-btn" onClick={() => initCanvases(true)} style={{ background: '#ef4444' }}>けして最初から</button>
-                <button className="back-btn" onClick={() => setScreenMode('SELECT')}>えきにもどる</button>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
-      {screenMode === 'COLOR' && (
-        <div className="color-screen">
-          <div className="timer-container">
-            <span>⏱ 残り時間:</span>
-            <span className={timeLeft < 30 ? 'timer-urgent' : ''}>{formatTime(timeLeft)}</span>
-          </div>
-          <div className="tool-bar">
-            <div className="palette">
-              {['#ff4757', '#2ed573', '#1e90ff', '#ffa500', '#cc5de8', '#adb5bd', '#ffffff'].map(c => (
-                <button key={c} className={`color-dot ${currentColor === c ? 'active' : ''}`} style={{ backgroundColor: c }} onClick={() => setCurrentColor(c)} />
-              ))}
-            </div>
-          </div>
-          <div className="canvas-wrapper" style={{ margin: '0 auto', width: '500px', height: '500px', touchAction: 'pinch-zoom' }}>
-            <canvas ref={colorCanvasRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', borderRadius: '24px', zIndex: 10 }} onPointerDown={startPainting} onPointerMove={paint} onPointerUp={stopPainting} />
-            <div style={{ position: 'absolute', inset: 0, zIndex: 20, pointerEvents: 'none', backgroundImage: `url(${getTrainImage(currentGroup)})`, backgroundSize: 'contain', backgroundPosition: 'center', backgroundRepeat: 'no-repeat' }} />
-          </div>
-          <div className="button-group">
-            <button className="reset-btn" onClick={() => initColoringCanvas()} style={{background:'#ef4444', color:'white', border:'none', padding:'10px 20px', borderRadius:'10px', fontSize: '18px', fontWeight: 'bold'}}>ぜんぶけす</button>
-            <button className="back-btn" onClick={handleExitColoring}>おわりにする</button>
-          </div>
-        </div>
-      )}
-
-      {screenMode === 'RESULT' && (
-        <div className="select-screen">
-          <h1 className="title">おつかれさまでした！🚂</h1>
-          <p className="subtitle" style={{fontSize: '22px', color: '#166534', fontWeight: 'bold'}}>とってもじょうずにぬれたね！👏👏</p>
-          <p style={{fontSize: '18px', margin: '20px 0'}}>またぬりえをするには、もういちどスタンプをあつめてね！</p>
-          <button className="reward-active-btn" style={{marginTop:'20px'}} onClick={() => setScreenMode('GROUP')}>つぎの路線へ出発！ ➔</button>
-        </div>
-      )}
-    </div>
-  );
-}
+  const strokeIdxRef =
