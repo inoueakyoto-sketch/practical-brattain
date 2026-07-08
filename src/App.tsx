@@ -15,14 +15,19 @@ import trainWa from './train_wa.png';
 
 // 50音データ
 interface NodePoint { x: number; y: number; }
-interface CharData { id: string; name: string; row: string; nodes: NodePoint[][]; }
+// 💡変更点：hitWidth（当たり判定の太さ）を追加できるようにしました
+interface CharData { id: string; name: string; row: string; nodes: NodePoint[][]; hitWidth?: number; }
 
 const ALL_CHARS: CharData[] = [
-  { id: 'a', name: 'あ', row: 'あ', nodes: [[{x:140,y:180},{x:340,y:170}], [{x:245,y:110},{x:240,y:250},{x:235,y:390}], [{x:290,y:220},{x:160,y:310},{x:180,y:400},{x:320,y:360},{x:270,y:240},{x:240,y:350}]] },
-  { id: 'i', name: 'い', row: 'あ', nodes: [[{x:160,y:160},{x:150,y:280},{x:180,y:350}], [{x:310,y:190},{x:330,y:290}]] },
-  { id: 'u', name: 'う', row: 'あ', nodes: [[{x:220,y:130},{x:280,y:160}], [{x:180,y:220},{x:310,y:230},{x:280,y:350},{x:200,y:410}]] },
-  { id: 'e', name: 'え', row: 'あ', nodes: [[{x:230,y:110},{x:270,y:140}], [{x:160,y:220},{x:330,y:210},{x:170,y:370},{x:300,y:340},{x:340,y:390}]] },
-  { id: 'o', name: 'お', row: 'あ', nodes: [[{x:140,y:190},{x:310,y:180}], [{x:230,y:120},{x:225,y:280},{x:150,y:300},{x:200,y:250},{x:320,y:290},{x:250,y:400}], [{x:315,y:130},{x:345,y:185}]] },
+  // 💡変更点：「あ行」に個別の当たり判定の太さ（hitWidth）を設定しました。
+  // 数値が大きいほど判定が甘く（正解になりやすく）なります。設定がない場合は自動的に「80」になります。
+  { id: 'a', name: 'あ', row: 'あ', hitWidth: 100, nodes: [[{x:140,y:180},{x:340,y:170}], [{x:245,y:110},{x:240,y:250},{x:235,y:390}], [{x:290,y:220},{x:160,y:310},{x:180,y:400},{x:320,y:360},{x:270,y:240},{x:240,y:350}]] },
+  { id: 'i', name: 'い', row: 'あ', hitWidth: 70, nodes: [[{x:160,y:160},{x:150,y:280},{x:180,y:350}], [{x:310,y:190},{x:330,y:290}]] },
+  { id: 'u', name: 'う', row: 'あ', hitWidth: 85, nodes: [[{x:220,y:130},{x:280,y:160}], [{x:180,y:220},{x:310,y:230},{x:280,y:350},{x:200,y:410}]] },
+  { id: 'e', name: 'え', row: 'あ', hitWidth: 90, nodes: [[{x:230,y:110},{x:270,y:140}], [{x:160,y:220},{x:330,y:210},{x:170,y:370},{x:300,y:340},{x:340,y:390}]] },
+  { id: 'o', name: 'お', row: 'あ', hitWidth: 100, nodes: [[{x:140,y:190},{x:310,y:180}], [{x:230,y:120},{x:225,y:280},{x:150,y:300},{x:200,y:250},{x:320,y:290},{x:250,y:400}], [{x:315,y:130},{x:345,y:185}]] },
+  
+  // 以降の文字は、hitWidthを省略しているためデフォルトの「80（かなり甘め）」が適用されます
   { id: 'ka', name: 'か', row: 'か', nodes: [[{x:160,y:180},{x:280,y:160},{x:330,y:240}], [{x:260,y:110},{x:220,y:380}], [{x:330,y:140},{x:360,y:210}]] },
   { id: 'ki', name: 'き', row: 'か', nodes: [[{x:160,y:170},{x:320,y:160}], [{x:150,y:230},{x:330,y:220}], [{x:250,y:110},{x:210,y:340}], [{x:180,y:350},{x:280,y:380}]] },
   { id: 'ku', name: 'く', row: 'か', nodes: [[{x:160,y:180},{x:330,y:260},{x:160,y:340}]] },
@@ -69,7 +74,6 @@ const ALL_CHARS: CharData[] = [
 const STROKE_COLORS = ['#ff4757', '#2ed573', '#1e90ff', '#ffa500']; 
 const CANVAS_SIZE = 500;
 
-// 🛠 欠落していた命令を一番上で定義（エラーを確実に防ぎます）
 const getTrainImage = (group: string) => {
   const mapping: Record<string, string> = { 
     'あ': trainA, 'か': trainKa, 'さ': trainSa, 'た': trainTa, 'な': trainNa, 
@@ -111,7 +115,7 @@ export default function App() {
 
   useEffect(() => { strokeIdxRef.current = strokeIdx; }, [strokeIdx]);
 
-  // 🕒 タイマーループ（安全な方式）
+  // 🕒 タイマーループ
   useEffect(() => {
     if (screenMode !== 'COLOR' || timeLeft <= 0) return;
     const timer = setTimeout(() => { setTimeLeft(prev => prev - 1); }, 1000);
@@ -131,7 +135,6 @@ export default function App() {
     setScreenMode('RESULT');
   };
 
-  // 💮 ボタンを押した時に起動する「はなまる演出」
   const handleApplyClearAndCelebrate = () => {
     setShowEpicCelebration(true);
     setTimeout(() => {
@@ -144,7 +147,7 @@ export default function App() {
     }, 2800);
   };
 
-  // なぞり書き用キャンバス初期化
+  // 💡変更点：なぞり書き用キャンバス初期化に Errorless Learning ロジックを組み込みました
   const initCanvases = useCallback((force = false) => {
     const mainCtx = canvasRef.current?.getContext('2d');
     const hitCtx = hitCanvasRef.current?.getContext('2d', { willReadFrequently: true });
@@ -173,8 +176,16 @@ export default function App() {
     mainCtx.font = fontStr; mainCtx.fillStyle = "#e2e8f0"; mainCtx.textAlign = "center"; mainCtx.textBaseline = "middle";
     mainCtx.fillText(selectedChar.name, CANVAS_SIZE/2, CANVAS_SIZE/2 + 15);
 
-    hitCtx.font = fontStr; hitCtx.strokeStyle = '#FF0000'; hitCtx.fillStyle = '#FF0000'; hitCtx.lineWidth = 35; 
-    hitCtx.textAlign = "center"; hitCtx.textBaseline = "middle";
+    // 💡変更点：個別のhitWidthを取得（なければデフォルト80）、端と角を丸くして判定をスムーズに
+    const currentHitWidth = selectedChar.hitWidth || 80;
+    hitCtx.font = fontStr; 
+    hitCtx.strokeStyle = '#FF0000'; 
+    hitCtx.fillStyle = '#FF0000'; 
+    hitCtx.lineWidth = currentHitWidth; 
+    hitCtx.lineCap = 'round'; 
+    hitCtx.lineJoin = 'round'; 
+    hitCtx.textAlign = "center"; 
+    hitCtx.textBaseline = "middle";
     hitCtx.strokeText(selectedChar.name, CANVAS_SIZE/2, CANVAS_SIZE/2 + 15);
     hitCtx.fillText(selectedChar.name, CANVAS_SIZE/2, CANVAS_SIZE/2 + 15);
 
