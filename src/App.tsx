@@ -99,7 +99,7 @@ export default function App() {
 
   useEffect(() => { strokeIdxRef.current = strokeIdx; }, [strokeIdx]);
 
-  // 🛠 【大修正】干渉を100%受けない安全な「setTimeout方式カウントダウン」へ完全移行
+  // 干渉を100%受けない安全な「setTimeout方式カウントダウン」
   useEffect(() => {
     if (screenMode !== 'COLOR' || timeLeft <= 0) return;
 
@@ -110,16 +110,15 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [screenMode, timeLeft]);
 
-  // 🛠 タイマーが「0」になった瞬間の時間切れ自動ロック監視
+  // タイマーが「0」になった瞬間の時間切れ自動ロック監視
   useEffect(() => {
     if (screenMode === 'COLOR' && timeLeft === 0) {
       handleExitColoring();
     }
   }, [timeLeft, screenMode]);
 
-  // 🛠 ぬりえを終了し、その行のスタンプラリーを強制リセットしてロックする処理
+  // ぬりえを終了し、その行のスタンプラリーを強制リセットしてロックする処理
   const handleExitColoring = () => {
-    // 確実に現在のグループの全文字IDを取得して一斉削除
     const currentGroupCharIds = ALL_CHARS.filter(c => c.row === currentGroup).map(c => c.id);
     setClearedChars(prev => prev.filter(id => !currentGroupCharIds.includes(id)));
     setScreenMode('RESULT');
@@ -304,6 +303,11 @@ export default function App() {
     paintLastPointRef.current = pt;
   };
 
+  // 🛠 不足していた stopPainting 関数を追加
+  const stopPainting = () => { 
+    isPaintingRef.current = false; 
+  };
+
   const formatTime = (seconds: number) => {
     const m = Math.floor(seconds / 60);
     const s = seconds % 60;
@@ -361,7 +365,6 @@ export default function App() {
             ))}
           </div>
           <div className="reward-zone" style={{marginTop: '30px'}}>
-            {/* 🛠 【修正】ぬりえに進む瞬間に、タイムリフトを確実に「180秒」にリセットするコードを追加 */}
             {isGroupCleared ? (
               <button className="reward-active-btn" onClick={() => { setTimeLeft(180); setScreenMode('COLOR'); setTimeout(() => initColoringCanvas(), 50); }}>🎉 しゅっぱつ進行！ぬりえへ（3分）</button>
             ) : (
@@ -386,7 +389,7 @@ export default function App() {
               </div>
               {Array.from({ length: selectedChar.nodes.length }).map((_, i) => (
                 <button key={i} className={`stroke-select-btn ${strokeIdx === i ? 'active' : ''}`} style={{ backgroundColor: strokeIdx === i ? STROKE_COLORS[i % 4] : 'white' }} disabled={i > strokeIdx}>
-                   seniority 🚃 {i+1}画目
+                    seniority 🚃 {i+1}画目
                 </button>
               ))}
             </div>
