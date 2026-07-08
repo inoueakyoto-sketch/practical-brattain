@@ -269,13 +269,12 @@ export default function App() {
       }
       
       if (targetPixels > 0) {
-        // 💡 修正箇所：当たり判定の太さに応じて、計算式の倍率を自動調整する
         const currentHitWidth = selectedChar.hitWidth || 60;
-        const targetWidth = currentHitWidth + 30; // 予測される見えない判定枠の総幅
-        const multiplier = targetWidth / 48; // 固定の筆の太さ(48)との比率から補正値を計算
+        const targetWidth = currentHitWidth + 30; 
+        const multiplier = targetWidth / 48; 
 
         let rawPercent = (coveredPixels / targetPixels) * 100;
-        let displayPercent = rawPercent * multiplier; // 完璧になぞれば約100%になるように補正
+        let displayPercent = rawPercent * multiplier; 
         
         const currentStroke = strokeIdxRef.current;
         const totalStrokes = selectedChar.nodes.length;
@@ -283,11 +282,7 @@ export default function App() {
         
         if (displayPercent > currentLimit) displayPercent = currentLimit;
         
-        // 💡 最後の画を描き終えて指を離した際、全体の75%以上なぞれていれば100%（クリア）とする
-        if (!isDrawingRef.current && currentStroke === totalStrokes - 1 && displayPercent >= 75) {
-          displayPercent = 100;
-        }
-        
+        // 💡 嘘の100%（強制的な引き上げ）をやめ、そのままの数字をセットします
         setCoverPercent(Math.min(100, Math.floor(displayPercent)));
       }
     } catch (err) {}
@@ -315,7 +310,7 @@ export default function App() {
     const mainCtx = canvasRef.current!.getContext('2d')!;
     const userCtx = userCanvasRef.current!.getContext('2d')!;
 
-    const coverageBrushSize = 48; // 💡 塗りつぶし判定用の筆は細めに固定
+    const coverageBrushSize = 48; 
 
     mainCtx.beginPath();
     if (hit) {
@@ -337,7 +332,7 @@ export default function App() {
     const mainCtx = canvasRef.current!.getContext('2d')!;
     const userCtx = userCanvasRef.current!.getContext('2d')!;
     
-    const coverageBrushSize = 48; // 💡 固定
+    const coverageBrushSize = 48; 
 
     if (dt > 0) {
       const speed = distance / dt;
@@ -528,7 +523,8 @@ export default function App() {
               <div className="progress-container">
                 <div className="progress-label">
                   <span>{strokeIdx + 1}画目 / ぜんぶで {selectedChar.nodes.length}画</span>
-                  <span>{coverPercent}%</span>
+                  {/* 💡 80%で「💮クリア！」の文字が出るように追加 */}
+                  <span>{coverPercent}% {coverPercent >= 80 && strokeIdx === selectedChar.nodes.length - 1 ? '💮クリア！' : ''}</span>
                 </div>
                 <div className="progress-track"><div className="progress-fill" style={{ width: `${coverPercent}%` }}></div></div>
               </div>
@@ -545,7 +541,8 @@ export default function App() {
             </div>
           </div>
           <div style={{ display: 'flex', gap: '20px', justifyContent: 'center', marginTop: '15px' }}>
-            {coverPercent >= 100 && strokeIdx === selectedChar.nodes.length - 1 ? (
+            {/* 💡 80%に到達していればクリアボタンを表示する（強制的な100%は不要） */}
+            {coverPercent >= 80 && strokeIdx === selectedChar.nodes.length - 1 ? (
               <button className="clear-trigger-btn" onClick={handleApplyClearAndCelebrate} style={{ fontSize: '24px', padding: '15px 40px' }}>🏁 できた！駅のスタンプをおす 💮</button>
             ) : (
               <>
@@ -589,6 +586,10 @@ export default function App() {
           <button className="reward-active-btn" style={{marginTop:'20px'}} onClick={() => setScreenMode('GROUP')}>つぎの路線へ出発！ ➔</button>
         </div>
       )}
+
+      <div style={{ position: 'absolute', bottom: '15px', width: '100%', textAlign: 'center', color: '#94a3b8', fontSize: '12px', fontWeight: 'bold' }}>
+        Seiki no Ryoiku Kyoshitsu GoalFree B5
+      </div>
     </div>
   );
 }
