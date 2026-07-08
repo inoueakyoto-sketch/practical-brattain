@@ -135,7 +135,7 @@ export default function App() {
     }, 2800);
   };
 
-  // 🛠 【なぞり書き復元】一番最初期のお子様が正しく書けていたロジックへ完全復元
+  // なぞり書き用キャンバス初期化
   const initCanvases = useCallback((force = false) => {
     const mainCtx = canvasRef.current?.getContext('2d');
     const hitCtx = hitCanvasRef.current?.getContext('2d', { willReadFrequently: true });
@@ -144,7 +144,7 @@ export default function App() {
 
     const dpr = window.devicePixelRatio || 1;
     [canvasRef.current!, hitCanvasRef.current!, userCanvasRef.current!].forEach(c => {
-      c.width = CANVAS_SIZE * dpr; c.height = CANVAS_SIZE * dpr;
+      if (c) { c.width = CANVAS_SIZE * dpr; c.height = CANVAS_SIZE * dpr; }
     });
 
     mainCtx.setTransform(1, 0, 0, 1, 0, 0); hitCtx.setTransform(1, 0, 0, 1, 0, 0); userCtx.setTransform(1, 0, 0, 1, 0, 0);
@@ -175,23 +175,28 @@ export default function App() {
   useEffect(() => { if (screenMode === 'TRAIN') setTimeout(() => initCanvases(true), 50); }, [screenMode, initCanvases]);
 
   const checkHit = (x: number, y: number) => {
-    const hitCtx = hitCanvasRef.current?.getContext('2d', { willReadFrequently: true });
+    const hitCanvas = hitCanvasRef.current;
+    if (!hitCanvas) return false;
+    const hitCtx = hitCanvas.getContext('2d', { willReadFrequently: true });
     if (!hitCtx) return false;
     try {
       const dpr = window.devicePixelRatio || 1;
-      const safeX = Math.floor(Math.max(0, Math.min(hitCanvasRef.current!.width - 1, x * dpr)));
-      const safeY = Math.floor(Math.max(0, Math.min(hitCanvasRef.current!.height - 1, y * dpr)));
+      const safeX = Math.floor(Math.max(0, Math.min(hitCanvas.width - 1, x * dpr)));
+      const safeY = Math.floor(Math.max(0, Math.min(hitCanvas.height - 1, y * dpr)));
       return hitCtx.getImageData(safeX, safeY, 1, 1).data[3] > 0;
     } catch(err) { return false; }
   };
 
   const calculateCoverage = () => {
-    const hitCtx = hitCanvasRef.current?.getContext('2d', { willReadFrequently: true });
-    const userCtx = userCanvasRef.current?.getContext('2d', { willReadFrequently: true });
+    const hitCanvas = hitCanvasRef.current;
+    const userCanvas = userCanvasRef.current;
+    if (!hitCanvas || !userCanvas) return;
+    const hitCtx = hitCanvas.getContext('2d', { willReadFrequently: true });
+    const userCtx = userCanvas.getContext('2d', { willReadFrequently: true });
     if (!hitCtx || !userCtx) return;
 
     try {
-      const w = hitCanvasRef.current!.width; const h = hitCanvasRef.current!.height;
+      const w = hitCanvas.width; const h = hitCanvas.height;
       const hitData = hitCtx.getImageData(0, 0, w, h).data;
       const userData = userCtx.getImageData(0, 0, w, h).data;
       
@@ -220,8 +225,9 @@ export default function App() {
     } catch (err) {}
   };
 
-  const getCoordinates = (e: React.PointerEvent<HTMLCanvasElement>, ref: React.RefObject<HTMLCanvasElement>) => {
-    const rect = ref.current!.getBoundingClientRect();
+  const getCoordinates = (e: React.PointerEvent<HTMLCanvasElement>, ref: React.MutableRefObject<HTMLCanvasElement | null>) => {
+    if (!ref.current) return { x: 0, y: 0, time: Date.now() };
+    const rect = ref.current.getBoundingClientRect();
     return { x: ((e.clientX - rect.left) / rect.width) * CANVAS_SIZE, y: ((e.clientY - rect.top) / rect.height) * CANVAS_SIZE, time: Date.now() };
   };
 
@@ -276,7 +282,6 @@ export default function App() {
   const handlePointerUp = () => {
     if (!isDrawingRef.current) return;
     isDrawingRef.current = false;
-    // 🛠 【暴発完全防止】一定距離をしっかりなぞった時だけ、次の「〇画目」のボタンに進む元の安定ロジック
     if (hitDistanceRef.current > 30) {
       if (strokeIdxRef.current < selectedChar.nodes.length - 1) setStrokeIdx(prev => prev + 1);
     }
@@ -288,6 +293,7 @@ export default function App() {
     const ctx = canvas.getContext('2d'); if (!ctx) return;
     const dpr = window.devicePixelRatio || 1;
     canvas.width = CANVAS_SIZE * dpr; canvas.height = CANVAS_SIZE * dpr;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.scale(dpr, dpr); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
     ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
   }, []);
@@ -303,12 +309,12 @@ export default function App() {
   };
 
   const paint = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!isPaintingRef.current || (e.pointerType === 'touch' && !e.isPrimary)) return;
+    if (!isPaintingRef.current || !paintLastPointRef.current || (e.pointerType === 'touch' && !e.isPrimary)) return;
     if (e.cancelable) e.preventDefault();
     const pt = getCoordinates(e, colorCanvasRef);
     const ctx = colorCanvasRef.current!.getContext('2d')!;
     ctx.beginPath(); ctx.lineWidth = brushSize; ctx.strokeStyle = currentColor;
-    ctx.moveTo(paintLastPointRef.current!.x, paintLastPointRef.current!.y);
+    ctx.moveTo(paintLastPointRef.current.x, paintLastPointRef.current.y);
     ctx.lineTo(pt.x, pt.y); ctx.stroke();
     paintLastPointRef.current = { x: pt.x, y: pt.y };
   };
@@ -323,7 +329,6 @@ export default function App() {
 
   return (
     <div className="app-container">
-      {/* 🌸 お子様が「できた！」ボタンを押した時だけ大爆発する確実なはなまる演出 */}
       {showEpicCelebration && (
         <div className="celebration-overlay">
           <div className="hanamaru" style={{ transform: 'scale(1)', opacity: 1 }}>💮</div>
@@ -395,7 +400,7 @@ export default function App() {
                 </div>
                 <div className="progress-track"><div className="progress-fill" style={{ width: `${coverPercent}%` }}></div></div>
               </div>
-              {/* 🛠 【文字崩れ修正】余計な英単語を完全に消去し、美しい立体日本語ボタンに100%復元 */}
+              {/* 🛠 【完全復元】「seniority」を完璧に削除。綺麗な日本語だけのボタンに直しました */}
               {Array.from({ length: selectedChar.nodes.length }).map((_, i) => (
                 <button key={i} className={`stroke-select-btn ${strokeIdx === i ? 'active' : ''}`} style={{ backgroundColor: strokeIdx === i ? STROKE_COLORS[i % 4] : 'white' }} disabled={i > strokeIdx}>
                    🚃 {i+1}画目
@@ -409,7 +414,6 @@ export default function App() {
             </div>
           </div>
           <div style={{ display: 'flex', gap: '20px', justifyContent: 'center', marginTop: '15px' }}>
-            {/* 🛠 【幼児の安心優先】勝手に終了させず、最後まで自分で書ききって納得してから次のステップに進める仕様 */}
             {coverPercent >= 100 && strokeIdx === selectedChar.nodes.length - 1 ? (
               <button className="clear-trigger-btn" onClick={handleApplyClearAndCelebrate} style={{ fontSize: '24px', padding: '15px 40px' }}>🏁 できた！駅のスタンプをおす 💮</button>
             ) : (
