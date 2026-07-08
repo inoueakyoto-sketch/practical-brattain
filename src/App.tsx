@@ -17,11 +17,11 @@ interface NodePoint { x: number; y: number; }
 interface CharData { id: string; name: string; row: string; nodes: NodePoint[][]; hitWidth?: number; }
 
 const ALL_CHARS: CharData[] = [
-  { id: 'a', name: 'あ', row: 'あ', hitWidth: 100, nodes: [[{x:140,y:180},{x:340,y:170}], [{x:245,y:110},{x:240,y:250},{x:235,y:390}], [{x:290,y:220},{x:160,y:310},{x:180,y:400},{x:320,y:360},{x:270,y:240},{x:240,y:350}]] },
-  { id: 'i', name: 'い', row: 'あ', hitWidth: 70, nodes: [[{x:160,y:160},{x:150,y:280},{x:180,y:350}], [{x:310,y:190},{x:330,y:290}]] },
-  { id: 'u', name: 'う', row: 'あ', hitWidth: 85, nodes: [[{x:220,y:130},{x:280,y:160}], [{x:180,y:220},{x:310,y:230},{x:280,y:350},{x:200,y:410}]] },
-  { id: 'e', name: 'え', row: 'あ', hitWidth: 90, nodes: [[{x:230,y:110},{x:270,y:140}], [{x:160,y:220},{x:330,y:210},{x:170,y:370},{x:300,y:340},{x:340,y:390}]] },
-  { id: 'o', name: 'お', row: 'あ', hitWidth: 100, nodes: [[{x:140,y:190},{x:310,y:180}], [{x:230,y:120},{x:225,y:280},{x:150,y:300},{x:200,y:250},{x:320,y:290},{x:250,y:400}], [{x:315,y:130},{x:345,y:185}]] },
+  { id: 'a', name: 'あ', row: 'あ', hitWidth: 80, nodes: [[{x:140,y:180},{x:340,y:170}], [{x:245,y:110},{x:240,y:250},{x:235,y:390}], [{x:290,y:220},{x:160,y:310},{x:180,y:400},{x:320,y:360},{x:270,y:240},{x:240,y:350}]] },
+  { id: 'i', name: 'い', row: 'あ', hitWidth: 60, nodes: [[{x:160,y:160},{x:150,y:280},{x:180,y:350}], [{x:310,y:190},{x:330,y:290}]] },
+  { id: 'u', name: 'う', row: 'あ', hitWidth: 70, nodes: [[{x:220,y:130},{x:280,y:160}], [{x:180,y:220},{x:310,y:230},{x:280,y:350},{x:200,y:410}]] },
+  { id: 'e', name: 'え', row: 'あ', hitWidth: 70, nodes: [[{x:230,y:110},{x:270,y:140}], [{x:160,y:220},{x:330,y:210},{x:170,y:370},{x:300,y:340},{x:340,y:390}]] },
+  { id: 'o', name: 'お', row: 'あ', hitWidth: 80, nodes: [[{x:140,y:190},{x:310,y:180}], [{x:230,y:120},{x:225,y:280},{x:150,y:300},{x:200,y:250},{x:320,y:290},{x:250,y:400}], [{x:315,y:130},{x:345,y:185}]] },
   { id: 'ka', name: 'か', row: 'か', nodes: [[{x:160,y:180},{x:280,y:160},{x:330,y:240}], [{x:260,y:110},{x:220,y:380}], [{x:330,y:140},{x:360,y:210}]] },
   { id: 'ki', name: 'き', row: 'か', nodes: [[{x:160,y:170},{x:320,y:160}], [{x:150,y:230},{x:330,y:220}], [{x:250,y:110},{x:210,y:340}], [{x:180,y:350},{x:280,y:380}]] },
   { id: 'ku', name: 'く', row: 'か', nodes: [[{x:160,y:180},{x:330,y:260},{x:160,y:340}]] },
@@ -52,9 +52,9 @@ const ALL_CHARS: CharData[] = [
   { id: 'mu', name: 'む', row: 'ま', nodes: [[{x:130,y:180},{x:330,y:170}], [{x:230,y:110},{x:230,y:310},{x:170,y:350},{x:330,y:350}], [{x:330,y:120},{x:370,y:180}]] },
   { id: 'me', name: 'め', row: 'ま', nodes: [[{x:170,y:150},{x:220,y:360}], [{x:250,y:110},{x:170,y:270},{x:270,y:380},{x:360,y:260}]] },
   { id: 'mo', name: 'も', row: 'ま', nodes: [[{x:250,y:110},{x:250,y:330},{x:330,y:320}], [{x:160,y:170},{x:330,y:160}], [{x:160,y:240},{x:330,y:230}]] },
-  { id: 'ya', name: 'や', row: 'や', nodes: [[{x:150,y:220},{x:330,y:190},{x:290,y:380}], [{x:260,y:110},{x:280,y:160}], [{x:320,y:120},{x:230,y:400}]] },
-  { id: 'yu', name: 'ゆ', row: 'や', nodes: [[{x:160,y:180},{x:140,y:320},{x:270,y:320},{x:260,y:140}], [{x:300,y:120},{x:300,y:400}]] },
-  { id: 'yo', name: 'よ', row: 'や', nodes: [[{x:140,y:190},{x:310,y:180}], [{x:260,y:110},{x:260,y:300},{x:200,y:340},{x:290,y:380}]] },
+  { id: 'ya', name: 'や', row: 'や', hitWidth: 70, nodes: [[{x:150,y:220},{x:330,y:190},{x:290,y:380}], [{x:260,y:110},{x:280,y:160}], [{x:320,y:120},{x:230,y:400}]] },
+  { id: 'yu', name: 'ゆ', row: 'や', hitWidth: 70, nodes: [[{x:160,y:180},{x:140,y:320},{x:270,y:320},{x:260,y:140}], [{x:300,y:120},{x:300,y:400}]] },
+  { id: 'yo', name: 'よ', row: 'や', hitWidth: 70, nodes: [[{x:140,y:190},{x:310,y:180}], [{x:260,y:110},{x:260,y:300},{x:200,y:340},{x:290,y:380}]] },
   { id: 'ra', name: 'ら', row: 'ら', nodes: [[{x:210,y:120},{x:270,y:140}], [{x:170,y:230},{x:290,y:230},{x:290,y:340},{x:190,y:400}]] },
   { id: 'ri', name: 'り', row: 'ら', nodes: [[{x:180,y:150},{x:170,y:300}], [{x:310,y:130},{x:320,y:390}]] },
   { id: 'ru', name: 'る', row: 'ら', nodes: [[{x:150,y:160},{x:340,y:155},{x:170,y:310},{x:290,y:320},{x:230,y:400}]] },
@@ -91,7 +91,7 @@ export default function App() {
 
   const [timeLeft, setTimeLeft] = useState(coloringTimeLimit);
 
-  // KPI計測用 State (潜時と所要時間)
+  // KPI計測用
   const [taskStartTime, setTaskStartTime] = useState<number>(0);
   const [latencyLogged, setLatencyLogged] = useState<boolean>(false);
 
@@ -211,7 +211,8 @@ export default function App() {
     mainCtx.font = fontStr; mainCtx.fillStyle = "#e2e8f0"; mainCtx.textAlign = "center"; mainCtx.textBaseline = "middle";
     mainCtx.fillText(selectedChar.name, CANVAS_SIZE/2, CANVAS_SIZE/2 + 15);
 
-    const currentHitWidth = selectedChar.hitWidth || 80;
+    // 💡 調整：デフォルトの当たり判定の幅を少し抑えめにしました（80 -> 60）
+    const currentHitWidth = selectedChar.hitWidth || 60;
     hitCtx.font = fontStr; 
     hitCtx.strokeStyle = '#FF0000'; 
     hitCtx.fillStyle = '#FF0000'; 
@@ -273,18 +274,20 @@ export default function App() {
       }
       
       if (targetPixels > 0) {
+        // 💡 調整：過度な「ゲタ履かせ」を排除し、実際の塗れた割合をベースにします
         let rawPercent = (coveredPixels / targetPixels) * 100;
-        let displayPercent = rawPercent * 1.5; 
+        let displayPercent = rawPercent * 1.1; // ほんの少しだけ補正
         
         const currentStroke = strokeIdxRef.current;
         const totalStrokes = selectedChar.nodes.length;
         const currentLimit = Math.min(100, ((currentStroke + 1) / totalStrokes) * 100);
         
         if (displayPercent > currentLimit) displayPercent = currentLimit;
-        if (isDrawingRef.current && currentStroke === totalStrokes - 1) { if (displayPercent > 96) displayPercent = 96; }
         
-        // 💡 修正箇所：最終画を書き終えた後、50%以上塗れていれば「100%」に引き上げてクリアさせる
-        if (!isDrawingRef.current && currentStroke === totalStrokes - 1 && rawPercent * 1.5 >= 50) displayPercent = 100;
+        // 💡 調整：最終画まで進み、かつ【75%以上】しっかり塗れていないとクリア扱いになりません
+        if (!isDrawingRef.current && currentStroke === totalStrokes - 1 && rawPercent >= 75) {
+          displayPercent = 100;
+        }
         
         setCoverPercent(Math.min(100, Math.floor(displayPercent)));
       }
@@ -313,9 +316,9 @@ export default function App() {
     const mainCtx = canvasRef.current!.getContext('2d')!;
     const userCtx = userCanvasRef.current!.getContext('2d')!;
 
-    // 💡 修正箇所：塗りつぶし用の見えない筆を、当たり判定枠より太く設定（一気に100%塗れるように）
-    const currentHitWidth = selectedChar.hitWidth || 80;
-    const coverageBrushSize = currentHitWidth + 40; 
+    // 💡 調整：巨大すぎた裏側の塗りつぶし筆のサイズを「48px」に縮小。
+    // 線（24px）より少し太い程度なので、ちゃんと軌道に沿ってなぞる必要があります。
+    const coverageBrushSize = 48; 
 
     mainCtx.beginPath();
     if (hit) {
@@ -336,10 +339,8 @@ export default function App() {
     
     const mainCtx = canvasRef.current!.getContext('2d')!;
     const userCtx = userCanvasRef.current!.getContext('2d')!;
-
-    // 💡 修正箇所：動かした時も見えない筆を太くする
-    const currentHitWidth = selectedChar.hitWidth || 80;
-    const coverageBrushSize = currentHitWidth + 40;
+    
+    const coverageBrushSize = 48; // 💡 調整済み
 
     if (dt > 0) {
       const speed = distance / dt;
