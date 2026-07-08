@@ -85,13 +85,9 @@ export default function App() {
   const [coverPercent, setCoverPercent] = useState<number>(0);
   const [showEpicCelebration, setShowEpicCelebration] = useState(false);
 
-  // 支援者用設定
   const [targetClearCount, setTargetClearCount] = useState<number>(5); 
   const [coloringTimeLimit, setColoringTimeLimit] = useState<number>(180);
-
   const [timeLeft, setTimeLeft] = useState(coloringTimeLimit);
-
-  // KPI計測用
   const [taskStartTime, setTaskStartTime] = useState<number>(0);
   const [latencyLogged, setLatencyLogged] = useState<boolean>(false);
 
@@ -211,7 +207,6 @@ export default function App() {
     mainCtx.font = fontStr; mainCtx.fillStyle = "#e2e8f0"; mainCtx.textAlign = "center"; mainCtx.textBaseline = "middle";
     mainCtx.fillText(selectedChar.name, CANVAS_SIZE/2, CANVAS_SIZE/2 + 15);
 
-    // 💡 調整：デフォルトの当たり判定の幅を少し抑えめにしました（80 -> 60）
     const currentHitWidth = selectedChar.hitWidth || 60;
     hitCtx.font = fontStr; 
     hitCtx.strokeStyle = '#FF0000'; 
@@ -274,9 +269,13 @@ export default function App() {
       }
       
       if (targetPixels > 0) {
-        // 💡 調整：過度な「ゲタ履かせ」を排除し、実際の塗れた割合をベースにします
+        // 💡 修正箇所：当たり判定の太さに応じて、計算式の倍率を自動調整する
+        const currentHitWidth = selectedChar.hitWidth || 60;
+        const targetWidth = currentHitWidth + 30; // 予測される見えない判定枠の総幅
+        const multiplier = targetWidth / 48; // 固定の筆の太さ(48)との比率から補正値を計算
+
         let rawPercent = (coveredPixels / targetPixels) * 100;
-        let displayPercent = rawPercent * 1.1; // ほんの少しだけ補正
+        let displayPercent = rawPercent * multiplier; // 完璧になぞれば約100%になるように補正
         
         const currentStroke = strokeIdxRef.current;
         const totalStrokes = selectedChar.nodes.length;
@@ -284,8 +283,8 @@ export default function App() {
         
         if (displayPercent > currentLimit) displayPercent = currentLimit;
         
-        // 💡 調整：最終画まで進み、かつ【75%以上】しっかり塗れていないとクリア扱いになりません
-        if (!isDrawingRef.current && currentStroke === totalStrokes - 1 && rawPercent >= 75) {
+        // 💡 最後の画を描き終えて指を離した際、全体の75%以上なぞれていれば100%（クリア）とする
+        if (!isDrawingRef.current && currentStroke === totalStrokes - 1 && displayPercent >= 75) {
           displayPercent = 100;
         }
         
@@ -316,9 +315,7 @@ export default function App() {
     const mainCtx = canvasRef.current!.getContext('2d')!;
     const userCtx = userCanvasRef.current!.getContext('2d')!;
 
-    // 💡 調整：巨大すぎた裏側の塗りつぶし筆のサイズを「48px」に縮小。
-    // 線（24px）より少し太い程度なので、ちゃんと軌道に沿ってなぞる必要があります。
-    const coverageBrushSize = 48; 
+    const coverageBrushSize = 48; // 💡 塗りつぶし判定用の筆は細めに固定
 
     mainCtx.beginPath();
     if (hit) {
@@ -340,7 +337,7 @@ export default function App() {
     const mainCtx = canvasRef.current!.getContext('2d')!;
     const userCtx = userCanvasRef.current!.getContext('2d')!;
     
-    const coverageBrushSize = 48; // 💡 調整済み
+    const coverageBrushSize = 48; // 💡 固定
 
     if (dt > 0) {
       const speed = distance / dt;
@@ -592,10 +589,6 @@ export default function App() {
           <button className="reward-active-btn" style={{marginTop:'20px'}} onClick={() => setScreenMode('GROUP')}>つぎの路線へ出発！ ➔</button>
         </div>
       )}
-
-      <div style={{ position: 'absolute', bottom: '15px', width: '100%', textAlign: 'center', color: '#94a3b8', fontSize: '12px', fontWeight: 'bold' }}>
-        Seiki no Ryoiku Kyoshitsu GoalFree B5
-      </div>
     </div>
   );
 }
