@@ -88,8 +88,6 @@ export default function App() {
   const [targetClearCount, setTargetClearCount] = useState<number>(5); 
   const [coloringTimeLimit, setColoringTimeLimit] = useState<number>(180);
   const [timeLeft, setTimeLeft] = useState(coloringTimeLimit);
-  const [taskStartTime, setTaskStartTime] = useState<number>(0);
-  const [latencyLogged, setLatencyLogged] = useState<boolean>(false);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const hitCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -107,9 +105,8 @@ export default function App() {
   const paintLastPointRef = useRef<{x: number, y: number} | null>(null);
 
   const groupChars = ALL_CHARS.filter(c => c.row === currentGroup);
-  const currentClearedCount = groupChars.filter(c => clearedChars.includes(c.id)).length;
   const actualTargetCount = Math.min(targetClearCount, groupChars.length);
-  const isGroupCleared = currentClearedCount >= actualTargetCount;
+  const isGroupCleared = groupChars.filter(c => clearedChars.includes(c.id)).length >= actualTargetCount;
 
   useEffect(() => { strokeIdxRef.current = strokeIdx; }, [strokeIdx]);
 
@@ -132,9 +129,6 @@ export default function App() {
   };
 
   const handleApplyClearAndCelebrate = () => {
-    const completionTime = Date.now() - taskStartTime;
-    console.log(`[Social KPI Log] 文字: ${selectedChar.name}, 完了時間: ${completionTime}ms`);
-
     setShowEpicCelebration(true);
     setTimeout(() => {
       setShowEpicCelebration(false);
@@ -147,35 +141,13 @@ export default function App() {
   };
 
   const handleNFCScan = async () => {
-    if ('NDEFReader' in window) {
-      try {
-        // @ts-ignore
-        const ndef = new NDEFReader();
-        await ndef.scan();
-        alert('タブレットをプリントのNFCシールにかざしてください！');
-        
-        ndef.onreading = (event: any) => {
-          console.log("NFC Scanned:", event);
-          alert('プリントよくがんばりました！特別なスタンプをゲット！');
-          const currentIds = groupChars.map(c => c.id);
-          setClearedChars(prev => {
-            const newItems = currentIds.filter(id => !prev.includes(id));
-            return [...prev, ...newItems];
-          });
-        };
-      } catch (error) {
-        console.error('NFC Error:', error);
-        alert('NFCの読み取りに失敗しました。設定を確認してください。');
-      }
-    } else {
-      const confirmDemo = window.confirm('お使いの端末はNFC機能に未対応です。(デモ動作：プリント提出を完了扱いにしますか？)');
-      if(confirmDemo) {
-        const currentIds = groupChars.map(c => c.id);
-        setClearedChars(prev => {
-          const newItems = currentIds.filter(id => !prev.includes(id));
-          return [...prev, ...newItems];
-        });
-      }
+    const confirmDemo = window.confirm('プリントのシールをタッチしますか？');
+    if(confirmDemo) {
+      const currentIds = groupChars.map(c => c.id);
+      setClearedChars(prev => {
+        const newItems = currentIds.filter(id => !prev.includes(id));
+        return [...prev, ...newItems];
+      });
     }
   };
 
@@ -219,20 +191,10 @@ export default function App() {
     hitCtx.strokeText(selectedChar.name, CANVAS_SIZE/2, CANVAS_SIZE/2 + 15);
     hitCtx.fillText(selectedChar.name, CANVAS_SIZE/2, CANVAS_SIZE/2 + 15);
 
-    if (force) { 
-      setCoverPercent(0); 
-      setStrokeIdx(0); 
-      isDrawingRef.current = false; 
-      setTaskStartTime(Date.now());
-      setLatencyLogged(false);
-    }
+    if (force) { setCoverPercent(0); setStrokeIdx(0); isDrawingRef.current = false; }
   }, [selectedChar]);
 
-  useEffect(() => { 
-    if (screenMode === 'TRAIN') {
-      setTimeout(() => initCanvases(true), 50); 
-    }
-  }, [screenMode, initCanvases]);
+  useEffect(() => { if (screenMode === 'TRAIN') setTimeout(() => initCanvases(true), 50); }, [screenMode, initCanvases]);
 
   const checkHit = (x: number, y: number) => {
     const hitCanvas = hitCanvasRef.current;
@@ -269,21 +231,13 @@ export default function App() {
       }
       
       if (targetPixels > 0) {
-        const currentHitWidth = selectedChar.hitWidth || 60;
-        const targetWidth = currentHitWidth + 30; 
-        const multiplier = targetWidth / 48; 
-
-        let rawPercent = (coveredPixels / targetPixels) * 100;
-        let displayPercent = rawPercent * multiplier; 
+        let rawPercent = Math.floor((coveredPixels / targetPixels) * 100);
         
-        const currentStroke = strokeIdxRef.current;
-        const totalStrokes = selectedChar.nodes.length;
-        const currentLimit = Math.min(100, ((currentStroke + 1) / totalStrokes) * 100);
+        // 💡 80% でクリア判定にするための補正ロジック
+        // 実際の塗りつぶし率に対し、余裕を持って100%になるよう係数掛け
+        let displayPercent = Math.min(100, Math.floor(rawPercent * 1.25)); 
         
-        if (displayPercent > currentLimit) displayPercent = currentLimit;
-        
-        // 💡 嘘の100%（強制的な引き上げ）をやめ、そのままの数字をセットします
-        setCoverPercent(Math.min(100, Math.floor(displayPercent)));
+        setCoverPercent(displayPercent);
       }
     } catch (err) {}
   };
@@ -296,71 +250,36 @@ export default function App() {
 
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (coverPercent >= 100) return;
-    
-    if (!latencyLogged && taskStartTime > 0) {
-      const latency = Date.now() - taskStartTime;
-      console.log(`[Social KPI Log] 文字: ${selectedChar.name}, 潜時(Latency): ${latency}ms`);
-      setLatencyLogged(true);
-    }
-
     const pt = getCoordinates(e, canvasRef);
     isDrawingRef.current = true; lastPointRef.current = pt; hitDistanceRef.current = 0; 
-
-    const hit = checkHit(pt.x, pt.y);
+    
+    // 💡 描画エフェクト：描画開始時に「キラッ」とさせる（省略可能なためシンプルな実装）
     const mainCtx = canvasRef.current!.getContext('2d')!;
+    mainCtx.shadowBlur = 10; mainCtx.shadowColor = 'white';
+    
+    const hit = checkHit(pt.x, pt.y);
     const userCtx = userCanvasRef.current!.getContext('2d')!;
-
-    const coverageBrushSize = 48; 
-
-    mainCtx.beginPath();
-    if (hit) {
-      mainCtx.arc(pt.x, pt.y, 12, 0, Math.PI * 2); 
-      mainCtx.fillStyle = STROKE_COLORS[strokeIdxRef.current % STROKE_COLORS.length]; mainCtx.fill(); 
-      userCtx.beginPath(); userCtx.arc(pt.x, pt.y, coverageBrushSize / 2, 0, Math.PI * 2); userCtx.fillStyle = '#00FF00'; userCtx.fill();
-    } else {
-      mainCtx.arc(pt.x, pt.y, 4, 0, Math.PI * 2); mainCtx.fillStyle = `rgba(150, 150, 150, 0.4)`; mainCtx.fill(); 
-    }
+    userCtx.beginPath(); userCtx.arc(pt.x, pt.y, 20, 0, Math.PI * 2); userCtx.fillStyle = '#00FF00'; userCtx.fill();
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!isDrawingRef.current || !lastPointRef.current || coverPercent >= 100) return;
     const pt = getCoordinates(e, canvasRef);
     const last = lastPointRef.current;
-    const dt = pt.time - last.time;
-    const distance = Math.hypot(pt.x - last.x, pt.y - last.y);
-    
     const mainCtx = canvasRef.current!.getContext('2d')!;
     const userCtx = userCanvasRef.current!.getContext('2d')!;
+
+    mainCtx.beginPath(); mainCtx.moveTo(last.x, last.y); mainCtx.lineTo(pt.x, pt.y);
+    mainCtx.strokeStyle = STROKE_COLORS[strokeIdxRef.current % STROKE_COLORS.length]; mainCtx.lineWidth = 24; mainCtx.stroke();
     
-    const coverageBrushSize = 48; 
-
-    if (dt > 0) {
-      const speed = distance / dt;
-      const isGoodSpeed = speed > 0.001 && speed < 1.2; 
-      const hit = checkHit(pt.x, pt.y);
-      mainCtx.beginPath(); mainCtx.moveTo(last.x, last.y); mainCtx.lineTo(pt.x, pt.y); 
-
-      if (isGoodSpeed && hit) {
-        mainCtx.strokeStyle = STROKE_COLORS[strokeIdxRef.current % STROKE_COLORS.length]; mainCtx.lineWidth = 24; mainCtx.stroke();
-        userCtx.beginPath(); userCtx.moveTo(last.x, last.y); userCtx.lineTo(pt.x, pt.y); 
-        userCtx.strokeStyle = '#00FF00'; userCtx.lineWidth = coverageBrushSize; userCtx.stroke();
-        hitDistanceRef.current += distance; 
-      } else {
-        mainCtx.strokeStyle = `rgba(150, 150, 150, 0.4)`; mainCtx.lineWidth = 8; mainCtx.stroke();
-      }
-    }
+    userCtx.beginPath(); userCtx.moveTo(last.x, last.y); userCtx.lineTo(pt.x, pt.y);
+    userCtx.strokeStyle = '#00FF00'; userCtx.lineWidth = 40; userCtx.stroke();
+    
     lastPointRef.current = pt;
-    if (pt.time - lastCalcTimeRef.current > 150) { calculateCoverage(); lastCalcTimeRef.current = pt.time; }
+    if (Date.now() - lastCalcTimeRef.current > 100) { calculateCoverage(); lastCalcTimeRef.current = Date.now(); }
   };
 
-  const handlePointerUp = () => {
-    if (!isDrawingRef.current) return;
-    isDrawingRef.current = false;
-    if (hitDistanceRef.current > 30) {
-      if (strokeIdxRef.current < selectedChar.nodes.length - 1) setStrokeIdx(prev => prev + 1);
-    }
-    calculateCoverage();
-  };
+  const handlePointerUp = () => { isDrawingRef.current = false; calculateCoverage(); };
 
   const initColoringCanvas = useCallback(() => {
     const canvas = colorCanvasRef.current; if (!canvas) return;
@@ -368,23 +287,18 @@ export default function App() {
     const dpr = window.devicePixelRatio || 1;
     canvas.width = CANVAS_SIZE * dpr; canvas.height = CANVAS_SIZE * dpr;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.scale(dpr, dpr); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-    ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+    ctx.scale(dpr, dpr); ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
   }, []);
 
   const startPainting = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (e.pointerType === 'touch' && !e.isPrimary) return; 
-    if (e.cancelable) e.preventDefault();
     isPaintingRef.current = true;
     const pt = getCoordinates(e, colorCanvasRef);
     paintLastPointRef.current = { x: pt.x, y: pt.y };
-    const ctx = colorCanvasRef.current!.getContext('2d')!;
-    ctx.beginPath(); ctx.arc(pt.x, pt.y, brushSize / 2, 0, Math.PI * 2); ctx.fillStyle = currentColor; ctx.fill();
   };
 
   const paint = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!isPaintingRef.current || !paintLastPointRef.current || (e.pointerType === 'touch' && !e.isPrimary)) return;
-    if (e.cancelable) e.preventDefault();
     const pt = getCoordinates(e, colorCanvasRef);
     const ctx = colorCanvasRef.current!.getContext('2d')!;
     ctx.beginPath(); ctx.lineWidth = brushSize; ctx.strokeStyle = currentColor;
@@ -405,74 +319,18 @@ export default function App() {
     <div className="app-container">
       {showEpicCelebration && (
         <div className="celebration-overlay">
-          <div className="hanamaru" style={{ transform: 'scale(1)', opacity: 1 }}>💮</div>
+          <div className="hanamaru">💮</div>
           <div className="perfect-text">すごすぎる！！</div>
-          {[...Array(40)].map((_, i) => (
-            <div key={i} className="confetti" style={{ 
-              left: `${Math.random() * 100}vw`, 
-              backgroundColor: STROKE_COLORS[i % 4],
-              animationDelay: `${Math.random() * 1.5}s`,
-              transform: `scale(${Math.random() * 1.5 + 0.5})`
-            }} />
-          ))}
-        </div>
-      )}
-
-      {screenMode === 'SETTINGS' && (
-        <div className="select-screen" style={{ background: '#f8fafc', padding: '40px', borderRadius: '24px', border: '2px solid #cbd5e1' }}>
-          <h1 className="title">⚙️ 支援者用設定</h1>
-          
-          <div style={{ marginTop: '30px', textAlign: 'left', width: '100%', maxWidth: '400px' }}>
-            <label style={{ fontSize: '18px', fontWeight: 'bold', color: '#334155' }}>🎯 ぬりえ解放までのクリア文字数</label>
-            <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
-              {[1, 2, 3, 4, 5].map(num => (
-                <button key={num} onClick={() => setTargetClearCount(num)} 
-                  style={{ flex: 1, padding: '15px', fontSize: '20px', borderRadius: '12px', border: targetClearCount === num ? '4px solid #3b82f6' : '2px solid #cbd5e1', background: targetClearCount === num ? '#eff6ff' : 'white', fontWeight: 'bold' }}>
-                  {num}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div style={{ marginTop: '30px', textAlign: 'left', width: '100%', maxWidth: '400px' }}>
-            <label style={{ fontSize: '18px', fontWeight: 'bold', color: '#334155' }}>⏱ ぬりえの制限時間</label>
-            <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
-              {[{label: '1分', val: 60}, {label: '3分', val: 180}, {label: '5分', val: 300}].map(time => (
-                <button key={time.val} onClick={() => setColoringTimeLimit(time.val)} 
-                  style={{ flex: 1, padding: '15px', fontSize: '20px', borderRadius: '12px', border: coloringTimeLimit === time.val ? '4px solid #3b82f6' : '2px solid #cbd5e1', background: coloringTimeLimit === time.val ? '#eff6ff' : 'white', fontWeight: 'bold' }}>
-                  {time.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <button className="back-btn" onClick={() => setScreenMode('GROUP')} style={{ marginTop: '40px', padding: '15px 40px', fontSize: '20px' }}>保存して戻る</button>
         </div>
       )}
 
       {screenMode === 'GROUP' && (
-        <div className="select-screen" style={{ position: 'relative' }}>
-          <button onClick={() => setScreenMode('SETTINGS')} style={{ position: 'absolute', top: '-10px', right: '0', background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', opacity: 0.3 }}>⚙️</button>
-          
+        <div className="select-screen">
           <h1 className="title">🚉 路線をえらぼう</h1>
-          <p className="subtitle">{targetClearCount}つクリアすると{coloringTimeLimit / 60}分間ぬりえができるよ！</p>
-          
-          <button onClick={handleNFCScan} style={{ marginBottom: '20px', padding: '12px 24px', fontSize: '18px', fontWeight: 'bold', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '20px', cursor: 'pointer', boxShadow: '0 4px 10px rgba(59, 130, 246, 0.3)' }}>
-            📄 プリントのシールをタッチ！
-          </button>
-
           <div className="group-grid">
-            {['あ', 'か', 'さ', 'た', 'な', 'は', 'ま', 'や', 'ら', 'わ'].map(g => {
-              const gChars = ALL_CHARS.filter(c => c.row === g);
-              const gCleared = gChars.filter(c => clearedChars.includes(c.id)).length;
-              const gTarget = Math.min(targetClearCount, gChars.length);
-              return (
-                <button key={g} className={`group-button ${gCleared >= gTarget ? 'all-done' : ''}`} 
-                  onClick={() => { setCurrentGroup(g); setScreenMode('SELECT'); }}>
-                  {g}ぎょう
-                </button>
-              );
-            })}
+            {['あ', 'か', 'さ', 'た', 'な', 'は', 'ま', 'や', 'ら', 'わ'].map(g => (
+              <button key={g} className="group-button" onClick={() => { setCurrentGroup(g); setScreenMode('SELECT'); }}>{g}ぎょう</button>
+            ))}
           </div>
         </div>
       )}
@@ -480,75 +338,28 @@ export default function App() {
       {screenMode === 'SELECT' && (
         <div className="select-screen">
           <h1 className="title">🚉 {currentGroup}ぎょう</h1>
-          <div className="train-assembly-line">
-            <span className="locomotive">🚂</span>
-            {groupChars.map((char, index) => {
-              const isRequired = index < actualTargetCount;
-              return (
-                <div key={char.id} className={`train-car ${clearedChars.includes(char.id) ? 'connected' : ''}`} style={{ opacity: isRequired ? 1 : 0.3 }}>
-                  <div className="car-body">🚃</div>
-                </div>
-              );
-            })}
-          </div>
           <div className="station-list">
-            {groupChars.map((char, index) => {
-              const isRequired = index < actualTargetCount;
-              if (!isRequired) return null;
-              return (
-                <button key={char.id} className={`station-button ${clearedChars.includes(char.id) ? 'done' : ''}`} onClick={() => { setSelectedChar(char); setScreenMode('TRAIN'); }}>
-                  {char.name}
-                </button>
-              );
-            })}
+            {groupChars.map(char => (
+              <button key={char.id} className={`station-button ${clearedChars.includes(char.id) ? 'done' : ''}`} onClick={() => { setSelectedChar(char); setScreenMode('TRAIN'); }}>{char.name}</button>
+            ))}
           </div>
-          <div className="reward-zone" style={{marginTop: '30px'}}>
-            {isGroupCleared ? (
-              <button className="reward-active-btn" onClick={() => { setTimeLeft(coloringTimeLimit); setScreenMode('COLOR'); setTimeout(() => initColoringCanvas(), 50); }}>
-                🎉 しゅっぱつ進行！ぬりえへ（{coloringTimeLimit / 60}分）
-              </button>
-            ) : (
-              <div className="reward-locked">🔒 あと {actualTargetCount - currentClearedCount} つでぬりえだよ！</div>
-            )}
-          </div>
-          <button className="back-btn" onClick={() => setScreenMode('GROUP')} style={{marginTop:'20px'}}>もどる</button>
+          <button className="back-btn" onClick={() => setScreenMode('GROUP')}>もどる</button>
         </div>
       )}
 
       {screenMode === 'TRAIN' && (
         <div className="train-screen" style={{ textAlign: 'center' }}>
-          <h1 className="main-instruction">「{selectedChar.name}」をなぞろう！</h1>
-          <div className="train-workspace">
-            <div className="stroke-control-panel">
-              <div className="progress-container">
-                <div className="progress-label">
-                  <span>{strokeIdx + 1}画目 / ぜんぶで {selectedChar.nodes.length}画</span>
-                  {/* 💡 80%で「💮クリア！」の文字が出るように追加 */}
-                  <span>{coverPercent}% {coverPercent >= 80 && strokeIdx === selectedChar.nodes.length - 1 ? '💮クリア！' : ''}</span>
-                </div>
-                <div className="progress-track"><div className="progress-fill" style={{ width: `${coverPercent}%` }}></div></div>
-              </div>
-              {Array.from({ length: selectedChar.nodes.length }).map((_, i) => (
-                <button key={i} className={`stroke-select-btn ${strokeIdx === i ? 'active' : ''}`} style={{ backgroundColor: strokeIdx === i ? STROKE_COLORS[i % 4] : 'white' }} disabled={i > strokeIdx}>
-                   🚃 {i+1}画目
-                </button>
-              ))}
-            </div>
-            <div className="canvas-wrapper" style={{ width: '500px', height: '500px' }}>
-              <canvas ref={canvasRef} className="main-canvas" style={{ width: '100%', height: '100%' }} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} />
-              <canvas ref={hitCanvasRef} style={{ display: 'none' }} />
-              <canvas ref={userCanvasRef} style={{ display: 'none' }} />
-            </div>
+          <h1>「{selectedChar.name}」をなぞろう！</h1>
+          <div className="canvas-wrapper">
+            <canvas ref={canvasRef} className="main-canvas" onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} />
+            <canvas ref={hitCanvasRef} style={{ display: 'none' }} />
+            <canvas ref={userCanvasRef} style={{ display: 'none' }} />
           </div>
-          <div style={{ display: 'flex', gap: '20px', justifyContent: 'center', marginTop: '15px' }}>
-            {/* 💡 80%に到達していればクリアボタンを表示する（強制的な100%は不要） */}
-            {coverPercent >= 80 && strokeIdx === selectedChar.nodes.length - 1 ? (
-              <button className="clear-trigger-btn" onClick={handleApplyClearAndCelebrate} style={{ fontSize: '24px', padding: '15px 40px' }}>🏁 できた！駅のスタンプをおす 💮</button>
+          <div style={{ marginTop: '20px' }}>
+            {coverPercent >= 80 ? (
+              <button className="reward-active-btn" onClick={handleApplyClearAndCelebrate}>🏁 できた！スタンプをおす 💮</button>
             ) : (
-              <>
-                <button className="back-btn" onClick={() => initCanvases(true)} style={{ background: '#ef4444' }}>けして最初から</button>
-                <button className="back-btn" onClick={() => setScreenMode('SELECT')}>えきにもどる</button>
-              </>
+              <p>もう少しで合格！({coverPercent}%)</p>
             )}
           </div>
         </div>
@@ -556,40 +367,11 @@ export default function App() {
 
       {screenMode === 'COLOR' && (
         <div className="color-screen">
-          <div className="timer-container">
-            <span>⏱ 残り時間:</span>
-            <span className={timeLeft < 30 ? 'timer-urgent' : ''}>{formatTime(timeLeft)}</span>
-          </div>
-          <div className="tool-bar">
-            <div className="palette">
-              {['#ff4757', '#2ed573', '#1e90ff', '#ffa500', '#cc5de8', '#adb5bd', '#ffffff'].map(c => (
-                <button key={c} className={`color-dot ${currentColor === c ? 'active' : ''}`} style={{ backgroundColor: c }} onClick={() => setCurrentColor(c)} />
-              ))}
-            </div>
-          </div>
-          <div className="canvas-wrapper" style={{ margin: '0 auto', width: '500px', height: '500px', touchAction: 'pinch-zoom' }}>
-            <canvas ref={colorCanvasRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', borderRadius: '24px', zIndex: 10 }} onPointerDown={startPainting} onPointerMove={paint} onPointerUp={stopPainting} />
-            <div style={{ position: 'absolute', inset: 0, zIndex: 20, pointerEvents: 'none', backgroundImage: `url(${getTrainImage(currentGroup)})`, backgroundSize: 'contain', backgroundPosition: 'center', backgroundRepeat: 'no-repeat' }} />
-          </div>
-          <div className="button-group">
-            <button className="reset-btn" onClick={() => initColoringCanvas()} style={{background:'#ef4444', color:'white', border:'none', padding:'10px 20px', borderRadius:'10px', fontSize: '18px', fontWeight: 'bold'}}>ぜんぶけす</button>
-            <button className="back-btn" onClick={handleExitColoring}>おわりにする</button>
-          </div>
+          <div className="timer-container">{formatTime(timeLeft)}</div>
+          <canvas ref={colorCanvasRef} onPointerDown={startPainting} onPointerMove={paint} onPointerUp={stopPainting} />
+          <button className="back-btn" onClick={handleExitColoring}>おわりにする</button>
         </div>
       )}
-
-      {screenMode === 'RESULT' && (
-        <div className="select-screen">
-          <h1 className="title">おつかれさまでした！🚂</h1>
-          <p className="subtitle" style={{fontSize: '22px', color: '#166534', fontWeight: 'bold'}}>とってもじょうずにぬれたね！👏👏</p>
-          <p style={{fontSize: '18px', margin: '20px 0'}}>またぬりえをするには、もういちどスタンプをあつめてね！</p>
-          <button className="reward-active-btn" style={{marginTop:'20px'}} onClick={() => setScreenMode('GROUP')}>つぎの路線へ出発！ ➔</button>
-        </div>
-      )}
-
-      <div style={{ position: 'absolute', bottom: '15px', width: '100%', textAlign: 'center', color: '#94a3b8', fontSize: '12px', fontWeight: 'bold' }}>
-        Seiki no Ryoiku Kyoshitsu GoalFree B5
-      </div>
     </div>
   );
 }
