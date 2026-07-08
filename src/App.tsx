@@ -78,9 +78,8 @@ export default function App() {
   const [coverPercent, setCoverPercent] = useState<number>(0);
   const [showEpicCelebration, setShowEpicCelebration] = useState(false);
 
-  // 🕒 タイマー
+  // 🕒 タイマー残り時間管理
   const [timeLeft, setTimeLeft] = useState(180);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const hitCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -100,21 +99,29 @@ export default function App() {
 
   useEffect(() => { strokeIdxRef.current = strokeIdx; }, [strokeIdx]);
 
-  // 🕒 タイマーループ
+  // 🛠 【大修正】干渉を100%受けない安全な「setTimeout方式カウントダウン」へ完全移行
   useEffect(() => {
-    if (screenMode === 'COLOR' && timeLeft > 0) {
-      timerRef.current = setInterval(() => { setTimeLeft(prev => prev - 1); }, 1000);
-    } else if (timeLeft === 0 && screenMode === 'COLOR') {
-      handleExitColoring();
-    }
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+    if (screenMode !== 'COLOR' || timeLeft <= 0) return;
+
+    const timer = setTimeout(() => {
+      setTimeLeft(prev => prev - 1);
+    }, 1000);
+
+    return () => clearTimeout(timer);
   }, [screenMode, timeLeft]);
 
+  // 🛠 タイマーが「0」になった瞬間の時間切れ自動ロック監視
+  useEffect(() => {
+    if (screenMode === 'COLOR' && timeLeft === 0) {
+      handleExitColoring();
+    }
+  }, [timeLeft, screenMode]);
+
+  // 🛠 ぬりえを終了し、その行のスタンプラリーを強制リセットしてロックする処理
   const handleExitColoring = () => {
-    if (timerRef.current) clearInterval(timerRef.current);
-    const currentGroupCharIds = groupChars.map(c => c.id);
+    // 確実に現在のグループの全文字IDを取得して一斉削除
+    const currentGroupCharIds = ALL_CHARS.filter(c => c.row === currentGroup).map(c => c.id);
     setClearedChars(prev => prev.filter(id => !currentGroupCharIds.includes(id)));
-    setTimeLeft(180);
     setScreenMode('RESULT');
   };
 
@@ -130,7 +137,7 @@ export default function App() {
         return prev;
       });
       setScreenMode('SELECT');
-    }, 2800); // 2.5秒〜3秒間じっくりはなまるを体験
+    }, 2800);
   };
 
   const initCanvases = useCallback((force = false) => {
@@ -161,7 +168,7 @@ export default function App() {
     mainCtx.font = fontStr; mainCtx.fillStyle = "#e2e8f0"; mainCtx.textAlign = "center"; mainCtx.textBaseline = "middle";
     mainCtx.fillText(selectedChar.name, CANVAS_SIZE/2, CANVAS_SIZE/2 + 15);
 
-    hitCtx.font = fontStr; hitCtx.strokeStyle = '#FF0000'; hitCtx.fillStyle = '#FF0000'; hitCtx.lineWidth = 45; // 🛠 判定を太く補強
+    hitCtx.font = fontStr; hitCtx.strokeStyle = '#FF0000'; hitCtx.fillStyle = '#FF0000'; hitCtx.lineWidth = 45; 
     hitCtx.textAlign = "center"; hitCtx.textBaseline = "middle";
     hitCtx.strokeText(selectedChar.name, CANVAS_SIZE/2, CANVAS_SIZE/2 + 15);
     hitCtx.fillText(selectedChar.name, CANVAS_SIZE/2, CANVAS_SIZE/2 + 15);
@@ -171,7 +178,6 @@ export default function App() {
 
   useEffect(() => { if (screenMode === 'TRAIN') setTimeout(() => initCanvases(true), 50); }, [screenMode, initCanvases]);
 
-  // 🛠 【大修正】なぞり書き判定ロジックを完全に修復
   const calculateCoverage = () => {
     const hitCtx = hitCanvasRef.current?.getContext('2d', { willReadFrequently: true });
     const userCtx = userCanvasRef.current?.getContext('2d', { willReadFrequently: true });
@@ -182,7 +188,6 @@ export default function App() {
     const userData = userCtx.getImageData(0, 0, w, h).data;
     
     let targetCount = 0, coveredCount = 0;
-    // 粗さを最適化して高速かつ正確にカウント
     for (let i = 0; i < hitData.length; i += 8) { 
       if (hitData[i + 3] > 0) { 
         targetCount++; 
@@ -192,7 +197,7 @@ export default function App() {
 
     if (targetCount > 0) {
       let rawPercent = (coveredCount / targetCount) * 100;
-      let displayPercent = rawPercent * 2.2; // 幼児向けに少し甘めに進捗をのばす
+      let displayPercent = rawPercent * 2.2; 
       
       const current = strokeIdxRef.current;
       const total = selectedChar.nodes.length;
@@ -200,7 +205,6 @@ export default function App() {
       
       let finalPercent = Math.min(currentLimit, Math.floor(displayPercent));
       
-      // 最後の画数で一定以上塗れていたら、100%にして即はなまるを起動
       if (current === total - 1 && finalPercent >= 85) {
         finalPercent = 100;
       }
@@ -231,7 +235,6 @@ export default function App() {
     userCtx.beginPath(); userCtx.arc(pt.x, pt.y, 28, 0, Math.PI * 2); 
     userCtx.fillStyle = '#00FF00'; userCtx.fill();
     
-    // パスを繋ぐために開始点へ移動
     mainCtx.beginPath(); mainCtx.moveTo(pt.x, pt.y);
     userCtx.beginPath(); userCtx.moveTo(pt.x, pt.y);
   };
@@ -256,12 +259,10 @@ export default function App() {
     isDrawingRef.current = false;
     
     const total = selectedChar.nodes.length;
-    // その画数の目標値に達していたら次の画へ進む
     if (coverPercent >= Math.min(100, ((strokeIdx + 1) / total) * 100)) {
       if (strokeIdx < total - 1) {
         setStrokeIdx(prev => prev + 1);
       } else {
-        // 最終画が完了
         setCoverPercent(100);
         triggerCelebrationAndSave();
       }
@@ -311,7 +312,6 @@ export default function App() {
 
   return (
     <div className="app-container">
-      {/* 🌸 修正版：大迫力はなまるコンフェッティ演出 */}
       {showEpicCelebration && (
         <div className="celebration-overlay">
           <div className="hanamaru" style={{ transform: 'scale(1)', opacity: 1 }}>💮</div>
@@ -361,8 +361,9 @@ export default function App() {
             ))}
           </div>
           <div className="reward-zone" style={{marginTop: '30px'}}>
+            {/* 🛠 【修正】ぬりえに進む瞬間に、タイムリフトを確実に「180秒」にリセットするコードを追加 */}
             {isGroupCleared ? (
-              <button className="reward-active-btn" onClick={() => { setScreenMode('COLOR'); setTimeout(() => initColoringCanvas(), 50); }}>🎉 しゅっぱつ進行！ぬりえへ（3分）</button>
+              <button className="reward-active-btn" onClick={() => { setTimeLeft(180); setScreenMode('COLOR'); setTimeout(() => initColoringCanvas(), 50); }}>🎉 しゅっぱつ進行！ぬりえへ（3分）</button>
             ) : (
               <div className="reward-locked">🔒 あと {groupChars.length - groupChars.filter(c => clearedChars.includes(c.id)).length} つでぬりえだよ！</div>
             )}
@@ -375,7 +376,6 @@ export default function App() {
         <div className="train-screen" style={{ textAlign: 'center' }}>
           <h1 className="main-instruction">「{selectedChar.name}」をなぞろう！</h1>
           <div className="train-workspace">
-            {/* 🛠 ボタン立体デザイン用のクラス名を再適用 */}
             <div className="stroke-control-panel">
               <div className="progress-container">
                 <div className="progress-label">
@@ -386,7 +386,7 @@ export default function App() {
               </div>
               {Array.from({ length: selectedChar.nodes.length }).map((_, i) => (
                 <button key={i} className={`stroke-select-btn ${strokeIdx === i ? 'active' : ''}`} style={{ backgroundColor: strokeIdx === i ? STROKE_COLORS[i % 4] : 'white' }} disabled={i > strokeIdx}>
-                  🚃 {i+1}画目
+                   seniority 🚃 {i+1}画目
                 </button>
               ))}
             </div>
