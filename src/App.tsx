@@ -69,6 +69,15 @@ const ALL_CHARS: CharData[] = [
 const STROKE_COLORS = ['#ff4757', '#2ed573', '#1e90ff', '#ffa500']; 
 const CANVAS_SIZE = 500;
 
+// 🛠 欠落していた命令を一番上で定義（エラーを確実に防ぎます）
+const getTrainImage = (group: string) => {
+  const mapping: Record<string, string> = { 
+    'あ': trainA, 'か': trainKa, 'さ': trainSa, 'た': trainTa, 'な': trainNa, 
+    'は': trainHa, 'ま': trainMa, 'や': trainYa, 'ら': trainRa, 'わ': trainWa 
+  };
+  return mapping[group] || trainA;
+};
+
 export default function App() {
   const [screenMode, setScreenMode] = useState<'GROUP' | 'SELECT' | 'TRAIN' | 'COLOR' | 'RESULT'>('GROUP');
   const [currentGroup, setCurrentGroup] = useState<string>('あ');
@@ -102,7 +111,7 @@ export default function App() {
 
   useEffect(() => { strokeIdxRef.current = strokeIdx; }, [strokeIdx]);
 
-  // 🕒 タイマーループ（安全なカウント方式）
+  // 🕒 タイマーループ（安全な方式）
   useEffect(() => {
     if (screenMode !== 'COLOR' || timeLeft <= 0) return;
     const timer = setTimeout(() => { setTimeLeft(prev => prev - 1); }, 1000);
@@ -122,7 +131,7 @@ export default function App() {
     setScreenMode('RESULT');
   };
 
-  // 💮 ボタンを押した時に起動する、安心の「はなまる演出」
+  // 💮 ボタンを押した時に起動する「はなまる演出」
   const handleApplyClearAndCelebrate = () => {
     setShowEpicCelebration(true);
     setTimeout(() => {
@@ -400,7 +409,6 @@ export default function App() {
                 </div>
                 <div className="progress-track"><div className="progress-fill" style={{ width: `${coverPercent}%` }}></div></div>
               </div>
-              {/* 🛠 【完全復元】「seniority」を完璧に削除。綺麗な日本語だけのボタンに直しました */}
               {Array.from({ length: selectedChar.nodes.length }).map((_, i) => (
                 <button key={i} className={`stroke-select-btn ${strokeIdx === i ? 'active' : ''}`} style={{ backgroundColor: strokeIdx === i ? STROKE_COLORS[i % 4] : 'white' }} disabled={i > strokeIdx}>
                    🚃 {i+1}画目
