@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import './styles.css';
 
-// 🚉 画像インポート (ご自身の環境に合わせてください)
+// 🚉 画像インポート
 import trainA from './train_a.png';
 import trainKa from './train_ka.png';
 import trainSa from './train_sa.png';
@@ -85,11 +85,15 @@ export default function App() {
   const [coverPercent, setCoverPercent] = useState<number>(0);
   const [showEpicCelebration, setShowEpicCelebration] = useState(false);
 
-  // 💡支援者用設定（シェイピング用）
-  const [targetClearCount, setTargetClearCount] = useState<number>(5); // デフォルトは5文字でクリア
-  const [coloringTimeLimit, setColoringTimeLimit] = useState<number>(180); // デフォルトは3分(180秒)
+  // 支援者用設定
+  const [targetClearCount, setTargetClearCount] = useState<number>(5); 
+  const [coloringTimeLimit, setColoringTimeLimit] = useState<number>(180);
 
   const [timeLeft, setTimeLeft] = useState(coloringTimeLimit);
+
+  // 💡 KPI計測用 State (潜時と所要時間)
+  const [taskStartTime, setTaskStartTime] = useState<number>(0);
+  const [latencyLogged, setLatencyLogged] = useState<boolean>(false);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const hitCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -98,4 +102,491 @@ export default function App() {
   const lastPointRef = useRef<{x: number, y: number, time: number} | null>(null);
   const hitDistanceRef = useRef(0);
   const lastCalcTimeRef = useRef(0);
-  const strokeIdxRef =
+  const strokeIdxRef = useRef(0); 
+
+  const colorCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [currentColor, setCurrentColor] = useState('#ff4757');
+  const [brushSize, setBrushSize] = useState(24); 
+  const isPaintingRef = useRef(false);
+  const paintLastPointRef = useRef<{x: number, y: number} | null>(null);
+
+  const groupChars = ALL_CHARS.filter(c => c.row === currentGroup);
+  const currentClearedCount = groupChars.filter(c => clearedChars.includes(c.id)).length;
+  const actualTargetCount = Math.min(targetClearCount, groupChars.length);
+  const isGroupCleared = currentClearedCount >= actualTargetCount;
+
+  useEffect(() => { strokeIdxRef.current = strokeIdx; }, [strokeIdx]);
+
+  useEffect(() => {
+    if (screenMode !== 'COLOR' || timeLeft <= 0) return;
+    const timer = setTimeout(() => { setTimeLeft(prev => prev - 1); }, 1000);
+    return () => clearTimeout(timer);
+  }, [screenMode, timeLeft]);
+
+  useEffect(() => {
+    if (screenMode === 'COLOR' && timeLeft === 0) {
+      handleExitColoring();
+    }
+  }, [timeLeft, screenMode]);
+
+  const handleExitColoring = () => {
+    const currentGroupCharIds = ALL_CHARS.filter(c => c.row === currentGroup).map(c => c.id);
+    setClearedChars(prev => prev.filter(id => !currentGroupCharIds.includes(id)));
+    setScreenMode('RESULT');
+  };
+
+  const handleApplyClearAndCelebrate = () => {
+    // 💡 KPIログ出力（バックエンドへの送信を想定）
+    const completionTime = Date.now() - taskStartTime;
+    console.log(`[Social KPI Log] 文字: ${selectedChar.name}, 完了時間: ${completionTime}ms`);
+
+    setShowEpicCelebration(true);
+    setTimeout(() => {
+      setShowEpicCelebration(false);
+      setClearedChars(prev => {
+        if (!prev.includes(selectedChar.id)) return [...prev, selectedChar.id];
+        return prev;
+      });
+      setScreenMode('SELECT');
+    }, 2800);
+  };
+
+  // 💡 NFCタグ読み取り機能（Web NFC API）
+  const handleNFCScan = async () => {
+    if ('NDEFReader' in window) {
+      try {
+        // @ts-ignore
+        const ndef = new NDEFReader();
+        await ndef.scan();
+        alert('タブレットをプリントのNFCシールにかざしてください！');
+        
+        ndef.onreading = (event: any) => {
+          console.log("NFC Scanned:", event);
+          alert('プリントよくがんばりました！特別なスタンプをゲット！');
+          // 強制的に現在のグループの文字をクリア扱いにし、ご褒美へ直行させる
+          const currentIds = groupChars.map(c => c.id);
+          setClearedChars(prev => [...new Set([...prev, ...currentIds])]);
+        };
+      } catch (error) {
+        console.error('NFC Error:', error);
+        alert('NFCの読み取りに失敗しました。設定を確認してください。');
+      }
+    } else {
+      // 非対応ブラウザ（iOS Safariなど）向けのフォールバック処理
+      const confirmDemo = window.confirm('お使いの端末はNFC機能に未対応です。(デモ動作：プリント提出を完了扱いにしますか？)');
+      if(confirmDemo) {
+        const currentIds = groupChars.map(c => c.id);
+        setClearedChars(prev => [...new Set([...prev, ...currentIds])]);
+      }
+    }
+  };
+
+  const initCanvases = useCallback((force = false) => {
+    const mainCtx = canvasRef.current?.getContext('2d');
+    const hitCtx = hitCanvasRef.current?.getContext('2d', { willReadFrequently: true });
+    const userCtx = userCanvasRef.current?.getContext('2d', { willReadFrequently: true });
+    if (!mainCtx || !hitCtx || !userCtx) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    [canvasRef.current!, hitCanvasRef.current!, userCanvasRef.current!].forEach(c => {
+      if (c) { c.width = CANVAS_SIZE * dpr; c.height = CANVAS_SIZE * dpr; }
+    });
+
+    mainCtx.setTransform(1, 0, 0, 1, 0, 0); hitCtx.setTransform(1, 0, 0, 1, 0, 0); userCtx.setTransform(1, 0, 0, 1, 0, 0);
+    mainCtx.scale(dpr, dpr); hitCtx.scale(dpr, dpr); userCtx.scale(dpr, dpr);
+    mainCtx.lineCap = 'round'; mainCtx.lineJoin = 'round';
+    userCtx.lineCap = 'round'; userCtx.lineJoin = 'round';
+
+    mainCtx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+    hitCtx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+    userCtx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+
+    mainCtx.strokeStyle = '#cbd5e1'; mainCtx.lineWidth = 1; mainCtx.strokeRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+    mainCtx.strokeStyle = '#e2e8f0'; mainCtx.lineWidth = 2; mainCtx.setLineDash([10, 8]);
+    mainCtx.beginPath(); mainCtx.moveTo(CANVAS_SIZE/2, 0); mainCtx.lineTo(CANVAS_SIZE/2, CANVAS_SIZE); mainCtx.moveTo(0, CANVAS_SIZE/2); mainCtx.lineTo(CANVAS_SIZE, CANVAS_SIZE/2); mainCtx.stroke(); mainCtx.setLineDash([]);
+
+    const fontStr = "bold 310px 'UD Digital Kyokasho NK-R', 'Hiragino Maru Gothic ProN', sans-serif";
+    mainCtx.font = fontStr; mainCtx.fillStyle = "#e2e8f0"; mainCtx.textAlign = "center"; mainCtx.textBaseline = "middle";
+    mainCtx.fillText(selectedChar.name, CANVAS_SIZE/2, CANVAS_SIZE/2 + 15);
+
+    const currentHitWidth = selectedChar.hitWidth || 80;
+    hitCtx.font = fontStr; 
+    hitCtx.strokeStyle = '#FF0000'; 
+    hitCtx.fillStyle = '#FF0000'; 
+    hitCtx.lineWidth = currentHitWidth; 
+    hitCtx.lineCap = 'round'; 
+    hitCtx.lineJoin = 'round'; 
+    hitCtx.textAlign = "center"; 
+    hitCtx.textBaseline = "middle";
+    hitCtx.strokeText(selectedChar.name, CANVAS_SIZE/2, CANVAS_SIZE/2 + 15);
+    hitCtx.fillText(selectedChar.name, CANVAS_SIZE/2, CANVAS_SIZE/2 + 15);
+
+    if (force) { 
+      setCoverPercent(0); 
+      setStrokeIdx(0); 
+      isDrawingRef.current = false; 
+      // 💡 画面リセット時にKPIタイマーもリセット
+      setTaskStartTime(Date.now());
+      setLatencyLogged(false);
+    }
+  }, [selectedChar]);
+
+  useEffect(() => { 
+    if (screenMode === 'TRAIN') {
+      setTimeout(() => initCanvases(true), 50); 
+    }
+  }, [screenMode, initCanvases]);
+
+  const checkHit = (x: number, y: number) => {
+    const hitCanvas = hitCanvasRef.current;
+    if (!hitCanvas) return false;
+    const hitCtx = hitCanvas.getContext('2d', { willReadFrequently: true });
+    if (!hitCtx) return false;
+    try {
+      const dpr = window.devicePixelRatio || 1;
+      const safeX = Math.floor(Math.max(0, Math.min(hitCanvas.width - 1, x * dpr)));
+      const safeY = Math.floor(Math.max(0, Math.min(hitCanvas.height - 1, y * dpr)));
+      return hitCtx.getImageData(safeX, safeY, 1, 1).data[3] > 0;
+    } catch(err) { return false; }
+  };
+
+  const calculateCoverage = () => {
+    const hitCanvas = hitCanvasRef.current;
+    const userCanvas = userCanvasRef.current;
+    if (!hitCanvas || !userCanvas) return;
+    const hitCtx = hitCanvas.getContext('2d', { willReadFrequently: true });
+    const userCtx = userCanvas.getContext('2d', { willReadFrequently: true });
+    if (!hitCtx || !userCtx) return;
+
+    try {
+      const w = hitCanvas.width; const h = hitCanvas.height;
+      const hitData = hitCtx.getImageData(0, 0, w, h).data;
+      const userData = userCtx.getImageData(0, 0, w, h).data;
+      
+      let targetPixels = 0, coveredPixels = 0;
+      for (let i = 0; i < hitData.length; i += 16) {
+        if (hitData[i + 3] > 0) {
+          targetPixels++;
+          if (userData[i + 3] > 0) coveredPixels++;
+        }
+      }
+      
+      if (targetPixels > 0) {
+        let rawPercent = (coveredPixels / targetPixels) * 100;
+        let displayPercent = rawPercent * 1.5; 
+        
+        const currentStroke = strokeIdxRef.current;
+        const totalStrokes = selectedChar.nodes.length;
+        const currentLimit = Math.min(100, ((currentStroke + 1) / totalStrokes) * 100);
+        
+        if (displayPercent > currentLimit) displayPercent = currentLimit;
+        if (isDrawingRef.current && currentStroke === totalStrokes - 1) { if (displayPercent > 96) displayPercent = 96; }
+        if (!isDrawingRef.current && currentStroke === totalStrokes - 1 && rawPercent * 1.5 >= 85) displayPercent = 100;
+        
+        setCoverPercent(Math.min(100, Math.floor(displayPercent)));
+      }
+    } catch (err) {}
+  };
+
+  const getCoordinates = (e: React.PointerEvent<HTMLCanvasElement>, ref: React.MutableRefObject<HTMLCanvasElement | null>) => {
+    if (!ref.current) return { x: 0, y: 0, time: Date.now() };
+    const rect = ref.current.getBoundingClientRect();
+    return { x: ((e.clientX - rect.left) / rect.width) * CANVAS_SIZE, y: ((e.clientY - rect.top) / rect.height) * CANVAS_SIZE, time: Date.now() };
+  };
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (coverPercent >= 100) return;
+    
+    // 💡 KPI: 潜時（Latency）の記録（最初に画面に触れたタイミング）
+    if (!latencyLogged && taskStartTime > 0) {
+      const latency = Date.now() - taskStartTime;
+      console.log(`[Social KPI Log] 文字: ${selectedChar.name}, 潜時(Latency): ${latency}ms`);
+      setLatencyLogged(true);
+    }
+
+    const pt = getCoordinates(e, canvasRef);
+    isDrawingRef.current = true; lastPointRef.current = pt; hitDistanceRef.current = 0; 
+
+    const hit = checkHit(pt.x, pt.y);
+    const mainCtx = canvasRef.current!.getContext('2d')!;
+    const userCtx = userCanvasRef.current!.getContext('2d')!;
+
+    mainCtx.beginPath();
+    if (hit) {
+      mainCtx.arc(pt.x, pt.y, 12, 0, Math.PI * 2); 
+      mainCtx.fillStyle = STROKE_COLORS[strokeIdxRef.current % STROKE_COLORS.length]; mainCtx.fill(); 
+      userCtx.beginPath(); userCtx.arc(pt.x, pt.y, 24, 0, Math.PI * 2); userCtx.fillStyle = '#00FF00'; userCtx.fill();
+    } else {
+      mainCtx.arc(pt.x, pt.y, 4, 0, Math.PI * 2); mainCtx.fillStyle = `rgba(150, 150, 150, 0.4)`; mainCtx.fill(); 
+    }
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!isDrawingRef.current || !lastPointRef.current || coverPercent >= 100) return;
+    const pt = getCoordinates(e, canvasRef);
+    const last = lastPointRef.current;
+    const dt = pt.time - last.time;
+    const distance = Math.hypot(pt.x - last.x, pt.y - last.y);
+    
+    const mainCtx = canvasRef.current!.getContext('2d')!;
+    const userCtx = userCanvasRef.current!.getContext('2d')!;
+
+    if (dt > 0) {
+      const speed = distance / dt;
+      const isGoodSpeed = speed > 0.001 && speed < 1.2; 
+      const hit = checkHit(pt.x, pt.y);
+      mainCtx.beginPath(); mainCtx.moveTo(last.x, last.y); mainCtx.lineTo(pt.x, pt.y); 
+
+      if (isGoodSpeed && hit) {
+        mainCtx.strokeStyle = STROKE_COLORS[strokeIdxRef.current % STROKE_COLORS.length]; mainCtx.lineWidth = 24; mainCtx.stroke();
+        userCtx.beginPath(); userCtx.moveTo(last.x, last.y); userCtx.lineTo(pt.x, pt.y); 
+        userCtx.strokeStyle = '#00FF00'; userCtx.lineWidth = 48; userCtx.stroke();
+        hitDistanceRef.current += distance; 
+      } else {
+        mainCtx.strokeStyle = `rgba(150, 150, 150, 0.4)`; mainCtx.lineWidth = 8; mainCtx.stroke();
+      }
+    }
+    lastPointRef.current = pt;
+    if (pt.time - lastCalcTimeRef.current > 150) { calculateCoverage(); lastCalcTimeRef.current = pt.time; }
+  };
+
+  const handlePointerUp = () => {
+    if (!isDrawingRef.current) return;
+    isDrawingRef.current = false;
+    if (hitDistanceRef.current > 30) {
+      if (strokeIdxRef.current < selectedChar.nodes.length - 1) setStrokeIdx(prev => prev + 1);
+    }
+    calculateCoverage();
+  };
+
+  const initColoringCanvas = useCallback(() => {
+    const canvas = colorCanvasRef.current; if (!canvas) return;
+    const ctx = canvas.getContext('2d'); if (!ctx) return;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = CANVAS_SIZE * dpr; canvas.height = CANVAS_SIZE * dpr;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.scale(dpr, dpr); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+  }, []);
+
+  const startPainting = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (e.pointerType === 'touch' && !e.isPrimary) return; 
+    if (e.cancelable) e.preventDefault();
+    isPaintingRef.current = true;
+    const pt = getCoordinates(e, colorCanvasRef);
+    paintLastPointRef.current = { x: pt.x, y: pt.y };
+    const ctx = colorCanvasRef.current!.getContext('2d')!;
+    ctx.beginPath(); ctx.arc(pt.x, pt.y, brushSize / 2, 0, Math.PI * 2); ctx.fillStyle = currentColor; ctx.fill();
+  };
+
+  const paint = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!isPaintingRef.current || !paintLastPointRef.current || (e.pointerType === 'touch' && !e.isPrimary)) return;
+    if (e.cancelable) e.preventDefault();
+    const pt = getCoordinates(e, colorCanvasRef);
+    const ctx = colorCanvasRef.current!.getContext('2d')!;
+    ctx.beginPath(); ctx.lineWidth = brushSize; ctx.strokeStyle = currentColor;
+    ctx.moveTo(paintLastPointRef.current.x, paintLastPointRef.current.y);
+    ctx.lineTo(pt.x, pt.y); ctx.stroke();
+    paintLastPointRef.current = { x: pt.x, y: pt.y };
+  };
+
+  const stopPainting = () => { isPaintingRef.current = false; };
+
+  const formatTime = (seconds: number) => {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m}:${s.toString().padStart(2, '0')}`;
+  };
+
+  return (
+    <div className="app-container">
+      {showEpicCelebration && (
+        <div className="celebration-overlay">
+          <div className="hanamaru" style={{ transform: 'scale(1)', opacity: 1 }}>💮</div>
+          <div className="perfect-text">すごすぎる！！</div>
+          {[...Array(40)].map((_, i) => (
+            <div key={i} className="confetti" style={{ 
+              left: `${Math.random() * 100}vw`, 
+              backgroundColor: STROKE_COLORS[i % 4],
+              animationDelay: `${Math.random() * 1.5}s`,
+              transform: `scale(${Math.random() * 1.5 + 0.5})`
+            }} />
+          ))}
+        </div>
+      )}
+
+      {screenMode === 'SETTINGS' && (
+        <div className="select-screen" style={{ background: '#f8fafc', padding: '40px', borderRadius: '24px', border: '2px solid #cbd5e1' }}>
+          <h1 className="title">⚙️ 支援者用設定</h1>
+          
+          <div style={{ marginTop: '30px', textAlign: 'left', width: '100%', maxWidth: '400px' }}>
+            <label style={{ fontSize: '18px', fontWeight: 'bold', color: '#334155' }}>🎯 ぬりえ解放までのクリア文字数</label>
+            <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+              {[1, 2, 3, 4, 5].map(num => (
+                <button key={num} onClick={() => setTargetClearCount(num)} 
+                  style={{ flex: 1, padding: '15px', fontSize: '20px', borderRadius: '12px', border: targetClearCount === num ? '4px solid #3b82f6' : '2px solid #cbd5e1', background: targetClearCount === num ? '#eff6ff' : 'white', fontWeight: 'bold' }}>
+                  {num}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ marginTop: '30px', textAlign: 'left', width: '100%', maxWidth: '400px' }}>
+            <label style={{ fontSize: '18px', fontWeight: 'bold', color: '#334155' }}>⏱ ぬりえの制限時間</label>
+            <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+              {[{label: '1分', val: 60}, {label: '3分', val: 180}, {label: '5分', val: 300}].map(time => (
+                <button key={time.val} onClick={() => setColoringTimeLimit(time.val)} 
+                  style={{ flex: 1, padding: '15px', fontSize: '20px', borderRadius: '12px', border: coloringTimeLimit === time.val ? '4px solid #3b82f6' : '2px solid #cbd5e1', background: coloringTimeLimit === time.val ? '#eff6ff' : 'white', fontWeight: 'bold' }}>
+                  {time.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <button className="back-btn" onClick={() => setScreenMode('GROUP')} style={{ marginTop: '40px', padding: '15px 40px', fontSize: '20px' }}>保存して戻る</button>
+        </div>
+      )}
+
+      {screenMode === 'GROUP' && (
+        <div className="select-screen" style={{ position: 'relative' }}>
+          <button onClick={() => setScreenMode('SETTINGS')} style={{ position: 'absolute', top: '-10px', right: '0', background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', opacity: 0.3 }}>⚙️</button>
+          
+          <h1 className="title">🚉 路線をえらぼう</h1>
+          <p className="subtitle">{targetClearCount}つクリアすると{coloringTimeLimit / 60}分間ぬりえができるよ！</p>
+          
+          {/* 💡 NFC連動ボタン */}
+          <button onClick={handleNFCScan} style={{ marginBottom: '20px', padding: '12px 24px', fontSize: '18px', fontWeight: 'bold', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '20px', cursor: 'pointer', boxShadow: '0 4px 10px rgba(59, 130, 246, 0.3)' }}>
+            📄 プリントのシールをタッチ！
+          </button>
+
+          <div className="group-grid">
+            {['あ', 'か', 'さ', 'た', 'な', 'は', 'ま', 'や', 'ら', 'わ'].map(g => {
+              const gChars = ALL_CHARS.filter(c => c.row === g);
+              const gCleared = gChars.filter(c => clearedChars.includes(c.id)).length;
+              const gTarget = Math.min(targetClearCount, gChars.length);
+              return (
+                <button key={g} className={`group-button ${gCleared >= gTarget ? 'all-done' : ''}`} 
+                  onClick={() => { setCurrentGroup(g); setScreenMode('SELECT'); }}>
+                  {g}ぎょう
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {screenMode === 'SELECT' && (
+        <div className="select-screen">
+          <h1 className="title">🚉 {currentGroup}ぎょう</h1>
+          <div className="train-assembly-line">
+            <span className="locomotive">🚂</span>
+            {groupChars.map((char, index) => {
+              const isRequired = index < actualTargetCount;
+              return (
+                <div key={char.id} className={`train-car ${clearedChars.includes(char.id) ? 'connected' : ''}`} style={{ opacity: isRequired ? 1 : 0.3 }}>
+                  <div className="car-body">🚃</div>
+                </div>
+              );
+            })}
+          </div>
+          <div className="station-list">
+            {groupChars.map((char, index) => {
+              const isRequired = index < actualTargetCount;
+              if (!isRequired) return null;
+              return (
+                <button key={char.id} className={`station-button ${clearedChars.includes(char.id) ? 'done' : ''}`} onClick={() => { setSelectedChar(char); setScreenMode('TRAIN'); }}>
+                  {char.name}
+                </button>
+              );
+            })}
+          </div>
+          <div className="reward-zone" style={{marginTop: '30px'}}>
+            {isGroupCleared ? (
+              <button className="reward-active-btn" onClick={() => { setTimeLeft(coloringTimeLimit); setScreenMode('COLOR'); setTimeout(() => initColoringCanvas(), 50); }}>
+                🎉 しゅっぱつ進行！ぬりえへ（{coloringTimeLimit / 60}分）
+              </button>
+            ) : (
+              <div className="reward-locked">🔒 あと {actualTargetCount - currentClearedCount} つでぬりえだよ！</div>
+            )}
+          </div>
+          <button className="back-btn" onClick={() => setScreenMode('GROUP')} style={{marginTop:'20px'}}>もどる</button>
+        </div>
+      )}
+
+      {screenMode === 'TRAIN' && (
+        <div className="train-screen" style={{ textAlign: 'center' }}>
+          <h1 className="main-instruction">「{selectedChar.name}」をなぞろう！</h1>
+          <div className="train-workspace">
+            <div className="stroke-control-panel">
+              <div className="progress-container">
+                <div className="progress-label">
+                  <span>{strokeIdx + 1}画目 / ぜんぶで {selectedChar.nodes.length}画</span>
+                  <span>{coverPercent}%</span>
+                </div>
+                <div className="progress-track"><div className="progress-fill" style={{ width: `${coverPercent}%` }}></div></div>
+              </div>
+              {Array.from({ length: selectedChar.nodes.length }).map((_, i) => (
+                <button key={i} className={`stroke-select-btn ${strokeIdx === i ? 'active' : ''}`} style={{ backgroundColor: strokeIdx === i ? STROKE_COLORS[i % 4] : 'white' }} disabled={i > strokeIdx}>
+                   🚃 {i+1}画目
+                </button>
+              ))}
+            </div>
+            <div className="canvas-wrapper" style={{ width: '500px', height: '500px' }}>
+              <canvas ref={canvasRef} className="main-canvas" style={{ width: '100%', height: '100%' }} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} />
+              <canvas ref={hitCanvasRef} style={{ display: 'none' }} />
+              <canvas ref={userCanvasRef} style={{ display: 'none' }} />
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: '20px', justifyContent: 'center', marginTop: '15px' }}>
+            {coverPercent >= 100 && strokeIdx === selectedChar.nodes.length - 1 ? (
+              <button className="clear-trigger-btn" onClick={handleApplyClearAndCelebrate} style={{ fontSize: '24px', padding: '15px 40px' }}>🏁 できた！駅のスタンプをおす 💮</button>
+            ) : (
+              <>
+                <button className="back-btn" onClick={() => initCanvases(true)} style={{ background: '#ef4444' }}>けして最初から</button>
+                <button className="back-btn" onClick={() => setScreenMode('SELECT')}>えきにもどる</button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {screenMode === 'COLOR' && (
+        <div className="color-screen">
+          <div className="timer-container">
+            <span>⏱ 残り時間:</span>
+            <span className={timeLeft < 30 ? 'timer-urgent' : ''}>{formatTime(timeLeft)}</span>
+          </div>
+          <div className="tool-bar">
+            <div className="palette">
+              {['#ff4757', '#2ed573', '#1e90ff', '#ffa500', '#cc5de8', '#adb5bd', '#ffffff'].map(c => (
+                <button key={c} className={`color-dot ${currentColor === c ? 'active' : ''}`} style={{ backgroundColor: c }} onClick={() => setCurrentColor(c)} />
+              ))}
+            </div>
+          </div>
+          <div className="canvas-wrapper" style={{ margin: '0 auto', width: '500px', height: '500px', touchAction: 'pinch-zoom' }}>
+            <canvas ref={colorCanvasRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', borderRadius: '24px', zIndex: 10 }} onPointerDown={startPainting} onPointerMove={paint} onPointerUp={stopPainting} />
+            <div style={{ position: 'absolute', inset: 0, zIndex: 20, pointerEvents: 'none', backgroundImage: `url(${getTrainImage(currentGroup)})`, backgroundSize: 'contain', backgroundPosition: 'center', backgroundRepeat: 'no-repeat' }} />
+          </div>
+          <div className="button-group">
+            <button className="reset-btn" onClick={() => initColoringCanvas()} style={{background:'#ef4444', color:'white', border:'none', padding:'10px 20px', borderRadius:'10px', fontSize: '18px', fontWeight: 'bold'}}>ぜんぶけす</button>
+            <button className="back-btn" onClick={handleExitColoring}>おわりにする</button>
+          </div>
+        </div>
+      )}
+
+      {screenMode === 'RESULT' && (
+        <div className="select-screen">
+          <h1 className="title">おつかれさまでした！🚂</h1>
+          <p className="subtitle" style={{fontSize: '22px', color: '#166534', fontWeight: 'bold'}}>とってもじょうずにぬれたね！👏👏</p>
+          <p style={{fontSize: '18px', margin: '20px 0'}}>またぬりえをするには、もういちどスタンプをあつめてね！</p>
+          <button className="reward-active-btn" style={{marginTop:'20px'}} onClick={() => setScreenMode('GROUP')}>つぎの路線へ出発！ ➔</button>
+        </div>
+      )}
+
+      {/* 💡 フッターブランディング */}
+      <div style={{ position: 'absolute', bottom: '15px', width: '100%', textAlign: 'center', color: '#94a3b8', fontSize: '12px', fontWeight: 'bold' }}>
+        正規の療育教室 GoalFree B5
+      </div>
+    </div>
+  );
+}
