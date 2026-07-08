@@ -151,7 +151,7 @@ export default function App() {
     }, 2800);
   };
 
-  // 💡 NFCタグ読み取り機能（Web NFC API）
+  // 💡 NFCタグ読み取り機能（エラー修正版）
   const handleNFCScan = async () => {
     if ('NDEFReader' in window) {
       try {
@@ -163,20 +163,24 @@ export default function App() {
         ndef.onreading = (event: any) => {
           console.log("NFC Scanned:", event);
           alert('プリントよくがんばりました！特別なスタンプをゲット！');
-          // 強制的に現在のグループの文字をクリア扱いにし、ご褒美へ直行させる
           const currentIds = groupChars.map(c => c.id);
-          setClearedChars(prev => [...new Set([...prev, ...currentIds])]);
+          setClearedChars(prev => {
+            const newItems = currentIds.filter(id => !prev.includes(id));
+            return [...prev, ...newItems];
+          });
         };
       } catch (error) {
         console.error('NFC Error:', error);
         alert('NFCの読み取りに失敗しました。設定を確認してください。');
       }
     } else {
-      // 非対応ブラウザ（iOS Safariなど）向けのフォールバック処理
       const confirmDemo = window.confirm('お使いの端末はNFC機能に未対応です。(デモ動作：プリント提出を完了扱いにしますか？)');
       if(confirmDemo) {
         const currentIds = groupChars.map(c => c.id);
-        setClearedChars(prev => [...new Set([...prev, ...currentIds])]);
+        setClearedChars(prev => {
+          const newItems = currentIds.filter(id => !prev.includes(id));
+          return [...prev, ...newItems];
+        });
       }
     }
   };
@@ -297,7 +301,7 @@ export default function App() {
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (coverPercent >= 100) return;
     
-    // 💡 KPI: 潜時（Latency）の記録（最初に画面に触れたタイミング）
+    // 💡 KPI: 潜時（Latency）の記録
     if (!latencyLogged && taskStartTime > 0) {
       const latency = Date.now() - taskStartTime;
       console.log(`[Social KPI Log] 文字: ${selectedChar.name}, 潜時(Latency): ${latency}ms`);
@@ -585,7 +589,7 @@ export default function App() {
 
       {/* 💡 フッターブランディング */}
       <div style={{ position: 'absolute', bottom: '15px', width: '100%', textAlign: 'center', color: '#94a3b8', fontSize: '12px', fontWeight: 'bold' }}>
-        正規の療育教室 GoalFree B5
+        Seiki no Ryoiku Kyoshitsu GoalFree B5
       </div>
     </div>
   );
